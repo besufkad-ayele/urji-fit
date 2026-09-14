@@ -1,0 +1,337 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #F3EFE5;
+  --shade: #F2F7D9;
+  --primary: #0B3D2E;
+  --primary-hover: #135440;
+  --text-primary: #14201A;
+  --text-muted: rgb(90, 102, 96);
+  --accent-iron: #C1502E;
+  --card-surface: #FCFAF6;
+  --card-border: rgba(20, 32, 26, 0.08);
+
+  /* Prototype Dark Mode Tokens */
+  --ink: #0F1216;
+  --bone: #EDEAE3;
+  --dim: #9AA2AF;
+  --iron: #C1502E;
+  --iron-light: #E17046;
+  --sage: #6FA287;
+  --amber: #D9A441;
+  --glass: rgba(32, 38, 46, 0.52);
+  --glass-light: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-strong: rgba(24, 28, 34, 0.78);
+  --radius: 16px;
+  --nav-w: 224px;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg: var(--ink);
+  --shade: rgba(193, 80, 46, 0.16);
+  --primary: var(--iron);
+  --primary-hover: var(--iron-light);
+  --text-primary: var(--bone);
+  --text-muted: var(--dim);
+  --accent-iron: var(--iron);
+  --card-surface: var(--glass);
+  --card-border: var(--glass-border);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1, h2, h3, .font-serif, .display-serif {
+  font-family: var(--font-instrument-serif), Georgia, "Times New Roman", serif;
+  letter-spacing: 0.01em;
+}
+
+.mono, code, pre {
+  font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(20, 32, 26, 0.04);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(11, 61, 46, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(11, 61, 46, 0.4);
+}
+
+.urji-glass {
+  background: rgba(252, 250, 246, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+}
+
+.urji-card {
+  background: #FCFAF6;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px -2px rgba(20, 32, 26, 0.04);
+}
+
+/* -------------------------------------------------------------
+   Ambient background (glass needs something to refract)
+------------------------------------------------------------- */
+.blobs {
+  display: none;
+}
+
+html.dark .blobs {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--ink);
+}
+
+html.dark .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.35;
+}
+
+html.dark .b1 {
+  width: 520px;
+  height: 520px;
+  background: var(--iron);
+  top: -160px;
+  left: -120px;
+  animation: float1 26s ease-in-out infinite;
+}
+
+html.dark .b2 {
+  width: 460px;
+  height: 460px;
+  background: #3A6E8F;
+  bottom: -140px;
+  right: -100px;
+  animation: float2 30s ease-in-out infinite;
+}
+
+html.dark .b3 {
+  width: 360px;
+  height: 360px;
+  background: var(--sage);
+  top: 40%;
+  left: 55%;
+  opacity: 0.22;
+  animation: float1 34s ease-in-out infinite reverse;
+}
+
+@keyframes float1 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(40px, 60px); }
+}
+
+@keyframes float2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-50px, -40px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.dark .blob {
+    animation: none;
+  }
+}
+
+/* -------------------------------------------------------------
+   Dark Mode Overrides for UI Elements
+------------------------------------------------------------- */
+html.dark,
+html.dark body {
+  background-color: var(--ink) !important;
+  color: var(--bone) !important;
+}
+
+html.dark ::selection {
+  background: var(--iron);
+  color: var(--bone);
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Canvas backgrounds fade to reveal ambient dark canvas & blobs */
+html.dark .bg-\[\#F3EFE5\],
+html.dark .bg-\[\#F3EFE5\]\/70 {
+  background-color: transparent !important;
+}
+
+/* Glass panels & cards */
+html.dark .bg-\[\#FCFAF6\],
+html.dark .bg-\[\#FCFAF6\]\/95,
+html.dark .urji-card {
+  background-color: var(--glass) !important;
+  backdrop-filter: blur(18px) !important;
+  -webkit-backdrop-filter: blur(18px) !important;
+  border-color: var(--glass-border) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark .urji-glass {
+  background-color: var(--glass-strong) !important;
+  backdrop-filter: blur(22px) !important;
+  -webkit-backdrop-filter: blur(22px) !important;
+  border-color: var(--glass-border) !important;
+}
+
+html.dark .bg-white,
+html.dark .bg-white\/60,
+html.dark .bg-white\/80 {
+  background-color: var(--glass-light) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: var(--glass-border) !important;
+}
+
+/* Soft lime accent transitions to warm iron glow */
+html.dark .bg-\[\#F2F7D9\],
+html.dark .bg-\[\#F2F7D9\]\/50,
+html.dark .bg-\[\#F2F7D9\]\/60,
+html.dark .bg-\[\#F2F7D9\]\/70 {
+  background-color: rgba(193, 80, 46, 0.16) !important;
+  border-color: rgba(193, 80, 46, 0.3) !important;
+  color: var(--iron-light) !important;
+}
+
+/* Pine Green active elements become Iron Rust */
+html.dark .bg-\[\#0B3D2E\] {
+  background-color: var(--iron) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 18px rgba(193, 80, 46, 0.35) !important;
+}
+
+html.dark .hover\:bg-\[\#135440\]:hover {
+  background-color: var(--iron-light) !important;
+}
+
+html.dark .hover\:bg-\[\#F2F7D9\]\/50:hover,
+html.dark .hover\:bg-\[\#F2F7D9\]\/60:hover {
+  background-color: var(--glass-light) !important;
+  color: var(--bone) !important;
+}
+
+html.dark .hover\:bg-black\/5:hover {
+  background-color: var(--glass-light) !important;
+}
+
+/* Typography mappings */
+html.dark .text-\[\#14201A\] {
+  color: var(--bone) !important;
+}
+
+html.dark .text-\[rgb\(90\,102\,96\)\] {
+  color: var(--dim) !important;
+}
+
+html.dark .text-\[\#0B3D2E\] {
+  color: var(--iron-light) !important;
+}
+
+html.dark .text-\[\#F2F7D9\] {
+  color: #ffffff !important;
+}
+
+/* Borders and dividers */
+html.dark .border-\[\#14201A\]\/10,
+html.dark .border-\[\#14201A\]\/5,
+html.dark .border-\[\#14201A\]\/20,
+html.dark .border-\[\#0B3D2E\]\/20,
+html.dark .border-\[\#0B3D2E\]\/10 {
+  border-color: var(--glass-border) !important;
+}
+
+html.dark .divide-\[\#14201A\]\/5 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-\[\#14201A\]\/10 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--glass-border) !important;
+}
+
+/* Form inputs and controls */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: rgba(0, 0, 0, 0.32) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--bone) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #5b6472 !important;
+}
+
+html.dark input:focus,
+html.dark select:focus,
+html.dark textarea:focus {
+  border-color: var(--iron-light) !important;
+  outline: none !important;
+}
+
+/* Modals & Popovers */
+html.dark .modal,
+html.dark [role="dialog"] {
+  background: var(--glass-strong) !important;
+  backdrop-filter: blur(26px) !important;
+  -webkit-backdrop-filter: blur(26px) !important;
+  border-color: var(--glass-border) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Progress bars */
+html.dark .bg-\[\#14201A\]\/10 {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid var(--glass-border);
+}
+
+/* Auto-scrolling promotion marquee */
+@keyframes promoMarquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-promo-marquee {
+  display: flex;
+  width: max-content;
+  animation: promoMarquee 32s linear infinite;
+}
+
+.animate-promo-marquee:hover {
+  animation-play-state: paused;
+}
+
