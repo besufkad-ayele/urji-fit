@@ -2,11 +2,110 @@
 -- Urji Fit Seeds: Users, Gyms, Trainers, Members, Classes, Demo Data
 -- ==============================================================================
 
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS bio TEXT,
+  ADD COLUMN IF NOT EXISTS certifications TEXT[],
+  ADD COLUMN IF NOT EXISTS specializations TEXT[],
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+ALTER TABLE public.users
+  DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.users
+  ADD CONSTRAINT users_role_check
+  CHECK (role IN ('member', 'trainer', 'gym_owner', 'admin', 'platform_admin')) NOT VALID;
+
+ALTER TABLE public.gyms
+  ADD COLUMN IF NOT EXISTS slug TEXT,
+  ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS address TEXT,
+  ADD COLUMN IF NOT EXISTS city TEXT,
+  ADD COLUMN IF NOT EXISTS state TEXT,
+  ADD COLUMN IF NOT EXISTS zip_code TEXT,
+  ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Ethiopia',
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS website TEXT,
+  ADD COLUMN IF NOT EXISTS logo_url TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS operating_hours JSONB,
+  ADD COLUMN IF NOT EXISTS amenities TEXT[],
+  ADD COLUMN IF NOT EXISTS capacity INT DEFAULT 100,
+  ADD COLUMN IF NOT EXISTS monthly_revenue NUMERIC(10, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'inactive', 'suspended'));
+
+UPDATE public.gyms
+SET slug = 'gym-' || replace(id::text, '-', '')
+WHERE slug IS NULL OR btrim(slug) = '';
+
+ALTER TABLE public.gyms
+  ALTER COLUMN slug SET DEFAULT ('gym-' || replace(gen_random_uuid()::text, '-', '')),
+  ALTER COLUMN slug SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gyms_slug ON public.gyms(slug);
+
+ALTER TABLE public.gym_memberships
+  ADD COLUMN IF NOT EXISTS membership_type TEXT NOT NULL DEFAULT 'monthly',
+  ADD COLUMN IF NOT EXISTS price NUMERIC(8, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  ADD COLUMN IF NOT EXISTS end_date DATE,
+  ADD COLUMN IF NOT EXISTS member_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS sessions_remaining INT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'gym_memberships'
+      AND column_name = 'user_id'
+  ) THEN
+    EXECUTE 'UPDATE public.gym_memberships
+      SET member_id = user_id
+      WHERE member_id IS NULL AND user_id IS NOT NULL';
+    EXECUTE 'ALTER TABLE public.gym_memberships ALTER COLUMN user_id DROP NOT NULL';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'gym_memberships'
+      AND column_name = 'role'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.gym_memberships ALTER COLUMN role DROP NOT NULL';
+  END IF;
+END
+$$;
+
+ALTER TABLE public.gym_memberships
+  DROP CONSTRAINT IF EXISTS gym_memberships_membership_type_check;
+ALTER TABLE public.gym_memberships
+  ADD CONSTRAINT gym_memberships_membership_type_check
+  CHECK (membership_type IN ('monthly', 'quarterly', 'annual', 'day_pass', 'class_pack')) NOT VALID;
+
+ALTER TABLE public.gym_memberships
+  DROP CONSTRAINT IF EXISTS gym_memberships_status_check;
+ALTER TABLE public.gym_memberships
+  ADD CONSTRAINT gym_memberships_status_check
+  CHECK (status IN ('active', 'expired', 'suspended', 'canceled')) NOT VALID;
+
+ALTER TABLE public.classes
+  DROP CONSTRAINT IF EXISTS classes_class_type_check;
+ALTER TABLE public.classes
+  ADD CONSTRAINT classes_class_type_check
+  CHECK (class_type IN ('yoga', 'pilates', 'spin', 'hiit', 'crossfit', 'boxing', 'zumba', 'strength', 'cardio', 'flexibility', 'functional', 'other'));
+
 -- 1. Insert Platform Admin User
+-- Seeded accounts are email-only so the seed never claims an existing phone number.
 INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
-  '+251900000000',
+  NULL,
   'admin@urjifit.com',
   'Urji Admin',
   'platform_admin',
@@ -14,14 +113,14 @@ VALUES (
   'active',
   true,
   now()
-) ON CONFLICT (email) DO NOTHING;
+) ON CONFLICT DO NOTHING;
 
 -- 2. Insert Demo Gym Owners
 INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at, bio, certifications)
 VALUES 
 (
   '00000000-0000-0000-0000-000000000010',
-  '+251911000001',
+  NULL,
   'owner@gymone.com',
   'Demo Gym Owner',
   'gym_owner',
@@ -34,7 +133,7 @@ VALUES
 ),
 (
   '00000000-0000-0000-0000-000000000011',
-  '+251911000002',
+  NULL,
   'sarah@fitnesshub.com',
   'Sarah Tadesse',
   'gym_owner',
@@ -44,14 +143,14 @@ VALUES
   now(),
   'Former athlete turned fitness entrepreneur.',
   ARRAY['Sports Science Degree', 'CrossFit Level 2']
-) ON CONFLICT (email) DO NOTHING;
+) ON CONFLICT DO NOTHING;
 
 -- 3. Insert Demo Trainers
 INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at, bio, certifications, specializations, avatar_url)
 VALUES 
 (
   '00000000-0000-0000-0000-000000000020',
-  '+251911000010',
+  NULL,
   'coach@urjifit.com',
   'Demo Coach',
   'trainer',
@@ -66,7 +165,7 @@ VALUES
 ),
 (
   '00000000-0000-0000-0000-000000000021',
-  '+251911000011',
+  NULL,
   'mike@urjifit.com',
   'Mike Alemayehu',
   'trainer',
@@ -81,7 +180,7 @@ VALUES
 ),
 (
   '00000000-0000-0000-0000-000000000022',
-  '+251911000012',
+  NULL,
   'ruth@urjifit.com',
   'Ruth Bekele',
   'trainer',
@@ -93,14 +192,14 @@ VALUES
   ARRAY['RYT-500', 'Pilates Certification', 'Meditation Teacher'],
   ARRAY['Yoga', 'Pilates', 'Flexibility', 'Mind-Body'],
   null
-) ON CONFLICT (email) DO NOTHING;
+) ON CONFLICT DO NOTHING;
 
 -- 4. Insert Demo Members
 INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at, daily_calorie_target, daily_protein_target, daily_carb_target, daily_fat_target, daily_water_target_ml)
 VALUES 
 (
   '00000000-0000-0000-0000-000000000002',
-  '+251912345678',
+  NULL,
   'bes@urjifit.com',
   'Besufikad Ayele',
   'member',
@@ -116,7 +215,7 @@ VALUES
 ),
 (
   '00000000-0000-0000-0000-000000000030',
-  '+251912000001',
+  NULL,
   'member1@urjifit.com',
   'Demo Member',
   'member',
@@ -132,7 +231,7 @@ VALUES
 ),
 (
   '00000000-0000-0000-0000-000000000031',
-  '+251912000002',
+  NULL,
   'john@example.com',
   'John Tesfaye',
   'member',
@@ -148,7 +247,7 @@ VALUES
 ),
 (
   '00000000-0000-0000-0000-000000000032',
-  '+251912000003',
+  NULL,
   'marta@example.com',
   'Marta Solomon',
   'member',
@@ -161,25 +260,37 @@ VALUES
   180,
   50,
   2500
-) ON CONFLICT (email) DO NOTHING;
+) ON CONFLICT DO NOTHING;
 
 -- 5. Insert OTPs for all demo users
-INSERT INTO public.otps (user_id, code, expires_at) VALUES
-('00000000-0000-0000-0000-000000000001', '999999', now() + interval '30 days'), -- Platform Admin
-('00000000-0000-0000-0000-000000000010', '666666', now() + interval '30 days'), -- Gym Owner 1
-('00000000-0000-0000-0000-000000000011', '555555', now() + interval '30 days'), -- Gym Owner 2
-('00000000-0000-0000-0000-000000000020', '222222', now() + interval '30 days'), -- Coach
-('00000000-0000-0000-0000-000000000021', '333333', now() + interval '30 days'), -- Mike
-('00000000-0000-0000-0000-000000000022', '444444', now() + interval '30 days'), -- Ruth
-('00000000-0000-0000-0000-000000000002', '123456', now() + interval '30 days'), -- Bes (Member)
-('00000000-0000-0000-0000-000000000030', '111111', now() + interval '30 days'); -- Demo Member
+INSERT INTO public.otps (user_id, code, expires_at)
+SELECT seed.user_id, seed.code, now() + interval '30 days'
+FROM (VALUES
+  ('00000000-0000-0000-0000-000000000001'::uuid, '999999'), -- Platform Admin
+  ('00000000-0000-0000-0000-000000000010'::uuid, '666666'), -- Gym Owner 1
+  ('00000000-0000-0000-0000-000000000011'::uuid, '555555'), -- Gym Owner 2
+  ('00000000-0000-0000-0000-000000000020'::uuid, '222222'), -- Coach
+  ('00000000-0000-0000-0000-000000000021'::uuid, '333333'), -- Mike
+  ('00000000-0000-0000-0000-000000000022'::uuid, '444444'), -- Ruth
+  ('00000000-0000-0000-0000-000000000002'::uuid, '123456'), -- Bes (Member)
+  ('00000000-0000-0000-0000-000000000030'::uuid, '111111')  -- Demo Member
+) AS seed(user_id, code)
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM public.otps existing
+  WHERE existing.user_id = seed.user_id
+    AND existing.code = seed.code
+    AND existing.is_consumed = false
+    AND existing.expires_at > now()
+);
 
 -- 6. Insert Demo Gyms
-INSERT INTO public.gyms (id, name, owner_id, address, city, state, country, phone, email, description, operating_hours, amenities, capacity, monthly_revenue, status)
+INSERT INTO public.gyms (id, name, slug, owner_id, address, city, state, country, phone, email, description, operating_hours, amenities, capacity, monthly_revenue, status)
 VALUES
 (
   '10000000-0000-0000-0000-000000000001',
   'Urji Fit Bole',
+  'urji-fit-bole',
   '00000000-0000-0000-0000-000000000010',
   'Bole Road, Next to Edna Mall',
   'Addis Ababa',
@@ -197,6 +308,7 @@ VALUES
 (
   '10000000-0000-0000-0000-000000000002',
   'Fitness Hub Kazanchis',
+  'fitness-hub-kazanchis',
   '00000000-0000-0000-0000-000000000011',
   'Kazanchis Business District',
   'Addis Ababa',
@@ -210,14 +322,16 @@ VALUES
   80,
   165000.00,
   'active'
-);
+)
+ON CONFLICT DO NOTHING;
 
 -- 7. Insert Gym Staff (Trainers at Gyms)
 INSERT INTO public.gym_staff (gym_id, user_id, position, hire_date, hourly_rate, commission_rate, status)
 VALUES
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', 'head_trainer', '2024-01-15', 500.00, 15.00, 'active'),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', 'trainer', '2024-03-01', 350.00, 10.00, 'active'),
-('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'trainer', '2024-02-10', 400.00, 12.00, 'active');
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'trainer', '2024-02-10', 400.00, 12.00, 'active')
+ON CONFLICT DO NOTHING;
 
 -- 8. Insert Gym Memberships
 INSERT INTO public.gym_memberships (gym_id, member_id, membership_type, price, start_date, end_date, status, auto_renew)
@@ -225,14 +339,16 @@ VALUES
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'monthly', 1500.00, CURRENT_DATE - 15, CURRENT_DATE + 15, 'active', true),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000030', 'quarterly', 4000.00, CURRENT_DATE - 30, CURRENT_DATE + 60, 'active', true),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000031', 'annual', 15000.00, CURRENT_DATE - 60, CURRENT_DATE + 305, 'active', true),
-('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000032', 'monthly', 1200.00, CURRENT_DATE - 10, CURRENT_DATE + 20, 'active', true);
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000032', 'monthly', 1200.00, CURRENT_DATE - 10, CURRENT_DATE + 20, 'active', true)
+ON CONFLICT DO NOTHING;
 
 -- 9. Insert Trainer Assignments
 INSERT INTO public.trainer_assignments (gym_id, trainer_id, client_id, assignment_type, sessions_per_week, session_duration_minutes, start_date, status, notes)
 VALUES
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000002', 'personal_training', 3, 60, CURRENT_DATE - 14, 'active', 'Focus on strength building and progressive overload'),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000031', 'personal_training', 2, 45, CURRENT_DATE - 20, 'active', 'Injury rehabilitation - lower back'),
-('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000032', 'personal_training', 2, 60, CURRENT_DATE - 7, 'active', 'Flexibility and mobility focus');
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000032', 'personal_training', 2, 60, CURRENT_DATE - 7, 'active', 'Flexibility and mobility focus')
+ON CONFLICT DO NOTHING;
 
 -- 10. Insert Classes
 INSERT INTO public.classes (gym_id, trainer_id, name, description, class_type, day_of_week, start_time, duration_minutes, capacity, price, difficulty_level, status)
@@ -240,21 +356,23 @@ VALUES
 -- Urji Fit Bole Classes
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', 'Morning HIIT', 'High intensity interval training to kickstart your day', 'hiit', 1, '06:00', 45, 25, 0, 'intermediate', 'active'),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', 'Evening Strength', 'Build muscle with compound movements', 'strength', 1, '18:00', 60, 20, 0, 'all_levels', 'active'),
-('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', 'Functional Fitness', 'Real-world movement patterns', 'strength', 3, '17:30', 60, 20, 0, 'intermediate', 'active'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', 'Functional Fitness', 'Real-world movement patterns', 'functional', 3, '17:30', 60, 20, 0, 'intermediate', 'active'),
 -- Fitness Hub Classes
 ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'Sunrise Yoga', 'Flow yoga to energize your morning', 'yoga', 2, '06:30', 60, 15, 200, 'beginner', 'active'),
-('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'Power Pilates', 'Core strengthening pilates', 'pilates', 4, '18:00', 50, 12, 200, 'intermediate', 'active');
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'Power Pilates', 'Core strengthening pilates', 'pilates', 4, '18:00', 50, 12, 200, 'intermediate', 'active')
+ON CONFLICT DO NOTHING;
 
 -- 11. Insert Class Bookings
 INSERT INTO public.class_bookings (class_id, member_id, booking_date, status, checked_in_at)
-SELECT c.id, m.id::uuid, CURRENT_DATE, 'attended', CURRENT_DATE + c.start_time 
+SELECT c.id, m.id::uuid, CURRENT_DATE, 'attended', CURRENT_DATE + c.start_time
 FROM public.classes c
 CROSS JOIN (VALUES 
   ('00000000-0000-0000-0000-000000000002'),
   ('00000000-0000-0000-0000-000000000030')
 ) m(id)
 WHERE c.gym_id = '10000000-0000-0000-0000-000000000001'
-LIMIT 4;
+LIMIT 4
+ON CONFLICT DO NOTHING;
 
 -- 12. Insert Attendance Logs
 INSERT INTO public.attendance_logs (gym_id, member_id, check_in_at, check_out_at, attendance_type)
@@ -262,7 +380,8 @@ VALUES
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', CURRENT_DATE + time '07:30', CURRENT_DATE + time '09:00', 'personal_training'),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000030', CURRENT_DATE + time '06:00', CURRENT_DATE + time '07:30', 'class'),
 ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000031', CURRENT_DATE - 1 + time '17:00', CURRENT_DATE - 1 + time '18:30', 'open_gym'),
-('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000032', CURRENT_DATE + time '06:30', CURRENT_DATE + time '08:00', 'class');
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000032', CURRENT_DATE + time '06:30', CURRENT_DATE + time '08:00', 'class')
+ON CONFLICT DO NOTHING;
 
 -- 13. Insert Payment Transactions
 INSERT INTO public.payment_transactions (gym_id, member_id, membership_id, amount, payment_method, transaction_type, status, payment_date)
@@ -275,7 +394,8 @@ SELECT
   'membership_fee',
   'completed',
   gm.start_date
-FROM public.gym_memberships gm;
+FROM public.gym_memberships gm
+ON CONFLICT DO NOTHING;
 
 -- 14. Insert Gym Equipment
 INSERT INTO public.gym_equipment (gym_id, name, equipment_type, brand, quantity, purchase_date, condition, status)
@@ -286,7 +406,8 @@ VALUES
 ('10000000-0000-0000-0000-000000000001', 'Rowing Machine', 'cardio', 'Concept2', 5, '2024-01-15', 'excellent', 'active'),
 ('10000000-0000-0000-0000-000000000002', 'Assault Bike', 'cardio', 'Rogue', 3, '2024-02-01', 'good', 'active'),
 ('10000000-0000-0000-0000-000000000002', 'Olympic Barbell', 'strength', 'Rogue', 10, '2024-02-01', 'excellent', 'active'),
-('10000000-0000-0000-0000-000000000002', 'Yoga Mat', 'accessories', 'Manduka', 20, '2024-02-10', 'good', 'active');
+('10000000-0000-0000-0000-000000000002', 'Yoga Mat', 'accessories', 'Manduka', 20, '2024-02-10', 'good', 'active')
+ON CONFLICT DO NOTHING;
 
 -- 15. Insert Progress Notes
 INSERT INTO public.progress_notes (trainer_id, client_id, gym_id, note_date, note_type, content, measurements)
@@ -298,7 +419,8 @@ VALUES
 ('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001',
   CURRENT_DATE, 'progress',
   'Week 2: Good progress on progressive overload. Bench press up to 80kg. Client reporting good recovery and energy levels.',
-  '{"weight": 82.0, "bench_press_5rm": 80}'::jsonb);
+  '{"weight": 82.0, "bench_press_5rm": 80}'::jsonb)
+ON CONFLICT DO NOTHING;
 
 -- 16. Seed 6-Day Workout Program (Global Templates)
 -- Template 1: Chest + Triceps (Push - Monday)

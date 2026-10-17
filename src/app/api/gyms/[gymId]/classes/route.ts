@@ -4,11 +4,11 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 // GET /api/gyms/[gymId]/classes - Get all classes for a gym
 export async function GET(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const gymId = params.gymId;
+    const { gymId } = await params;
 
     const { data: classes, error } = await supabaseAdmin
       .from('classes')
@@ -35,11 +35,11 @@ export async function GET(
 // POST /api/gyms/[gymId]/classes - Create new class
 export async function POST(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const gymId = params.gymId;
+    const { gymId } = await params;
     const body = await req.json();
     const {
       trainer_id,

@@ -68,7 +68,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-[var(--bg)] text-[var(--text-primary)] antialiased selection:bg-[#0B3D2E] selection:text-[#F2F7D9] relative">
+      <body
+        suppressHydrationWarning
+        className="min-h-screen bg-[var(--bg)] text-[var(--text-primary)] antialiased selection:bg-[#0B3D2E] selection:text-[#F2F7D9] relative"
+      >
         <ThemeProvider>
           <AmbientBlobs />
           <div className="relative z-10">{children}</div>

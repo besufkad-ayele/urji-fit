@@ -3,24 +3,72 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
-import { KeyRound, ShieldAlert, Sparkles, UserCheck } from 'lucide-react';
+import {
+  Building2,
+  Dumbbell,
+  KeyRound,
+  ShieldAlert,
+  Sparkles,
+  UserCheck,
+  type LucideIcon,
+} from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
+
+const DEMO_LOGINS: {
+  credential: string;
+  otp: string;
+  label: string;
+  icon: LucideIcon;
+  colorClass: string;
+}[] = [
+  {
+    credential: 'bes@urjifit.com',
+    otp: '123456',
+    label: 'Member',
+    icon: UserCheck,
+    colorClass: 'text-[#0B3D2E]',
+  },
+  {
+    credential: 'owner@gymone.com',
+    otp: '666666',
+    label: 'Gym Owner',
+    icon: Building2,
+    colorClass: 'text-[#0B3D2E]',
+  },
+  {
+    credential: 'coach@urjifit.com',
+    otp: '222222',
+    label: 'Trainer',
+    icon: Dumbbell,
+    colorClass: 'text-[#0B3D2E]',
+  },
+  {
+    credential: 'admin@urjifit.com',
+    otp: '999999',
+    label: 'Admin',
+    icon: KeyRound,
+    colorClass: 'text-[#C1502E]',
+  },
+];
+
+const getOrCreateDeviceId = () => {
+  let id = localStorage.getItem('urji_device_id');
+  if (!id) {
+    id = uuidv4();
+    localStorage.setItem('urji_device_id', id);
+  }
+  return id;
+};
 
 export default function LoginPage() {
   const [credential, setCredential] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [deviceId, setDeviceId] = useState('');
   const router = useRouter();
 
   useEffect(() => {
-    let dId = localStorage.getItem('urji_device_id');
-    if (!dId) {
-      dId = uuidv4();
-      localStorage.setItem('urji_device_id', dId);
-    }
-    setDeviceId(dId);
+    getOrCreateDeviceId();
 
     // If already logged in, redirect
     if (localStorage.getItem('urji_user')) {
@@ -48,7 +96,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           credential: credToUse,
           otp: otpToUse,
-          deviceId,
+          deviceId: getOrCreateDeviceId(),
           deviceName: 'Web Browser (' + navigator.userAgent.split(' ')[0] + ')',
         }),
       });
@@ -90,10 +138,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleQuickDemo = (cred: string, code: string) => {
-    setCredential(cred);
-    setOtp(code);
-    handleLogin(undefined, cred, code);
+  const handleQuickDemo = (demoLogin: (typeof DEMO_LOGINS)[number]) => {
+    setCredential(demoLogin.credential);
+    setOtp(demoLogin.otp);
+    void handleLogin(undefined, demoLogin.credential, demoLogin.otp);
   };
 
   return (
@@ -173,75 +221,27 @@ export default function LoginPage() {
         </div>
 
         {/* Quick Demo Pre-seeds */}
-        <div className="mt-6 pt-5 border-t border-[#14201A]/10">
-          <p className="text-[11px] uppercase tracking-wider text-[rgb(90,102,96)] font-semibold mb-3 flex items-center justify-center gap-1">
+        <div className="mt-6 pt-5 border-t border-[#14201A]/10 text-center">
+          <p className="text-[11px] uppercase tracking-wider text-[rgb(90,102,96)] font-semibold mb-2 flex items-center justify-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-[#C1502E]" /> Quick Demo Logins
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251900000000', '999999')}
-              className="px-3 py-2 text-xs font-medium bg-gradient-to-br from-[#C1502E] to-[#914026] hover:from-[#D15F3A] hover:to-[#A64D2E] text-white rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              Platform Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251911000001', '666666')}
-              className="px-3 py-2 text-xs font-medium bg-gradient-to-br from-[#0B3D2E] to-[#135440] hover:from-[#135440] hover:to-[#1A6B55] text-[#F2F7D9] rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              Gym Owner 1
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251911000002', '555555')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 border border-[#0B3D2E]/20 rounded-lg text-[#0B3D2E] transition-colors flex items-center justify-center gap-1.5"
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              Gym Owner 2
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251911000010', '222222')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-sky-50 border border-sky-300/50 rounded-lg text-sky-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Trainer (Coach)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251911000011', '333333')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-sky-50 border border-sky-300/50 rounded-lg text-sky-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Trainer (Mike)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251911000012', '444444')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-sky-50 border border-sky-300/50 rounded-lg text-sky-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Trainer (Ruth)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251912345678', '123456')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-emerald-50 border border-emerald-300/50 rounded-lg text-emerald-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Member (Bes)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('+251912000001', '111111')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-emerald-50 border border-emerald-300/50 rounded-lg text-emerald-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Member (Demo)
-            </button>
+            {DEMO_LOGINS.map((demoLogin) => {
+              const Icon = demoLogin.icon;
+
+              return (
+                <button
+                  key={demoLogin.label}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleQuickDemo(demoLogin)}
+                  className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 disabled:opacity-50 border border-[#14201A]/10 rounded-lg text-[#14201A] transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Icon className={`w-3.5 h-3.5 ${demoLogin.colorClass}`} />
+                  {demoLogin.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

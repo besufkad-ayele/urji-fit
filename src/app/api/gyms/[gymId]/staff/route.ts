@@ -4,11 +4,11 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 // GET /api/gyms/[gymId]/staff - Get all staff for a gym
 export async function GET(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const gymId = params.gymId;
+    const { gymId } = await params;
 
     const { data: staff, error } = await supabaseAdmin
       .from('gym_staff')
@@ -42,11 +42,11 @@ export async function GET(
 // POST /api/gyms/[gymId]/staff - Add new staff member
 export async function POST(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const gymId = params.gymId;
+    const { gymId } = await params;
     const body = await req.json();
     const {
       user_id,
@@ -96,10 +96,11 @@ export async function POST(
 // PATCH /api/gyms/[gymId]/staff - Update staff member
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
+    const { gymId } = await params;
     const body = await req.json();
     const { staffId, ...updates } = body;
 
@@ -111,6 +112,7 @@ export async function PATCH(
       .from('gym_staff')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', staffId)
+      .eq('gym_id', gymId)
       .select(`
         *,
         user:users!gym_staff_user_id_fkey(id, full_name, email, phone)

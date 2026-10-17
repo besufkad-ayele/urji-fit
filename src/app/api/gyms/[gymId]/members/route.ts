@@ -4,11 +4,11 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 // GET /api/gyms/[gymId]/members - Get all members for a gym
 export async function GET(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const gymId = params.gymId;
+    const { gymId } = await params;
 
     const { data: memberships, error } = await supabaseAdmin
       .from('gym_memberships')
@@ -44,11 +44,11 @@ export async function GET(
 // POST /api/gyms/[gymId]/members - Add new member to gym
 export async function POST(
   req: NextRequest,
-  { params }: { params: { gymId: string } }
+  { params }: { params: Promise<{ gymId: string }> }
 ) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const gymId = params.gymId;
+    const { gymId } = await params;
     const body = await req.json();
     const {
       member_id,

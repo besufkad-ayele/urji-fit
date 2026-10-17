@@ -36,6 +36,18 @@ CREATE TABLE IF NOT EXISTS public.users (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS bio TEXT,
+  ADD COLUMN IF NOT EXISTS certifications TEXT[],
+  ADD COLUMN IF NOT EXISTS specializations TEXT[],
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+ALTER TABLE public.users
+  DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.users
+  ADD CONSTRAINT users_role_check
+  CHECK (role IN ('member', 'trainer', 'gym_owner', 'admin', 'platform_admin')) NOT VALID;
+
 -- 2. Single-use OTPs for admin-provisioned auth
 CREATE TABLE IF NOT EXISTS public.otps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -187,6 +199,7 @@ CREATE TABLE IF NOT EXISTS public.body_metrics (
 CREATE TABLE IF NOT EXISTS public.gyms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
+  slug TEXT NOT NULL DEFAULT ('gym-' || replace(gen_random_uuid()::text, '-', '')),
   owner_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   address TEXT,
   city TEXT,
@@ -206,6 +219,36 @@ CREATE TABLE IF NOT EXISTS public.gyms (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.gyms
+  ADD COLUMN IF NOT EXISTS slug TEXT,
+  ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS address TEXT,
+  ADD COLUMN IF NOT EXISTS city TEXT,
+  ADD COLUMN IF NOT EXISTS state TEXT,
+  ADD COLUMN IF NOT EXISTS zip_code TEXT,
+  ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Ethiopia',
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS website TEXT,
+  ADD COLUMN IF NOT EXISTS logo_url TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS operating_hours JSONB,
+  ADD COLUMN IF NOT EXISTS amenities TEXT[],
+  ADD COLUMN IF NOT EXISTS capacity INT DEFAULT 100,
+  ADD COLUMN IF NOT EXISTS monthly_revenue NUMERIC(10, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'inactive', 'suspended'));
+
+UPDATE public.gyms
+SET slug = 'gym-' || replace(id::text, '-', '')
+WHERE slug IS NULL OR btrim(slug) = '';
+
+ALTER TABLE public.gyms
+  ALTER COLUMN slug SET DEFAULT ('gym-' || replace(gen_random_uuid()::text, '-', '')),
+  ALTER COLUMN slug SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gyms_slug ON public.gyms(slug);
 
 -- 14. Gym Staff (Trainers, Receptionists, etc.)
 CREATE TABLE IF NOT EXISTS public.gym_staff (
@@ -240,6 +283,56 @@ CREATE TABLE IF NOT EXISTS public.gym_memberships (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE public.gym_memberships
+  ADD COLUMN IF NOT EXISTS membership_type TEXT NOT NULL DEFAULT 'monthly',
+  ADD COLUMN IF NOT EXISTS price NUMERIC(8, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  ADD COLUMN IF NOT EXISTS end_date DATE,
+  ADD COLUMN IF NOT EXISTS member_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS sessions_remaining INT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'gym_memberships'
+      AND column_name = 'user_id'
+  ) THEN
+    EXECUTE 'UPDATE public.gym_memberships
+      SET member_id = user_id
+      WHERE member_id IS NULL AND user_id IS NOT NULL';
+    EXECUTE 'ALTER TABLE public.gym_memberships ALTER COLUMN user_id DROP NOT NULL';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'gym_memberships'
+      AND column_name = 'role'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.gym_memberships ALTER COLUMN role DROP NOT NULL';
+  END IF;
+END
+$$;
+
+ALTER TABLE public.gym_memberships
+  DROP CONSTRAINT IF EXISTS gym_memberships_membership_type_check;
+ALTER TABLE public.gym_memberships
+  ADD CONSTRAINT gym_memberships_membership_type_check
+  CHECK (membership_type IN ('monthly', 'quarterly', 'annual', 'day_pass', 'class_pack')) NOT VALID;
+
+ALTER TABLE public.gym_memberships
+  DROP CONSTRAINT IF EXISTS gym_memberships_status_check;
+ALTER TABLE public.gym_memberships
+  ADD CONSTRAINT gym_memberships_status_check
+  CHECK (status IN ('active', 'expired', 'suspended', 'canceled')) NOT VALID;
+
 -- 16. Trainer-Client Assignments
 CREATE TABLE IF NOT EXISTS public.trainer_assignments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -264,7 +357,7 @@ CREATE TABLE IF NOT EXISTS public.classes (
   trainer_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   description TEXT,
-  class_type TEXT NOT NULL CHECK (class_type IN ('yoga', 'pilates', 'spin', 'hiit', 'crossfit', 'boxing', 'zumba', 'strength', 'cardio', 'flexibility', 'other')),
+  class_type TEXT NOT NULL CHECK (class_type IN ('yoga', 'pilates', 'spin', 'hiit', 'crossfit', 'boxing', 'zumba', 'strength', 'cardio', 'flexibility', 'functional', 'other')),
   day_of_week INT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday, 6=Saturday
   start_time TIME NOT NULL,
   duration_minutes INT NOT NULL DEFAULT 60,
@@ -275,6 +368,12 @@ CREATE TABLE IF NOT EXISTS public.classes (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.classes
+  DROP CONSTRAINT IF EXISTS classes_class_type_check;
+ALTER TABLE public.classes
+  ADD CONSTRAINT classes_class_type_check
+  CHECK (class_type IN ('yoga', 'pilates', 'spin', 'hiit', 'crossfit', 'boxing', 'zumba', 'strength', 'cardio', 'flexibility', 'functional', 'other'));
 
 -- 18. Class Bookings
 CREATE TABLE IF NOT EXISTS public.class_bookings (
@@ -379,29 +478,53 @@ ALTER TABLE public.progress_notes ENABLE ROW LEVEL SECURITY;
 
 -- Allow read/write for service_role (bypasses RLS) and create permissive policy for users
 -- Note: Service role has full access by default. We add policies for authenticated user access.
+DROP POLICY IF EXISTS "Allow public read of templates" ON public.workout_templates;
 CREATE POLICY "Allow public read of templates" ON public.workout_templates FOR SELECT USING (user_id IS NULL OR true);
+DROP POLICY IF EXISTS "Allow public read of exercises" ON public.workout_exercises;
 CREATE POLICY "Allow public read of exercises" ON public.workout_exercises FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow all actions on users" ON public.users;
 CREATE POLICY "Allow all actions on users" ON public.users FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on otps" ON public.otps;
 CREATE POLICY "Allow all actions on otps" ON public.otps FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on workout_templates" ON public.workout_templates;
 CREATE POLICY "Allow all actions on workout_templates" ON public.workout_templates FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on workout_exercises" ON public.workout_exercises;
 CREATE POLICY "Allow all actions on workout_exercises" ON public.workout_exercises FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on workout_sessions" ON public.workout_sessions;
 CREATE POLICY "Allow all actions on workout_sessions" ON public.workout_sessions FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on exercise_sets" ON public.exercise_sets;
 CREATE POLICY "Allow all actions on exercise_sets" ON public.exercise_sets FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on progression_suggestions" ON public.progression_suggestions;
 CREATE POLICY "Allow all actions on progression_suggestions" ON public.progression_suggestions FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on food_logs" ON public.food_logs;
 CREATE POLICY "Allow all actions on food_logs" ON public.food_logs FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on fasting_windows" ON public.fasting_windows;
 CREATE POLICY "Allow all actions on fasting_windows" ON public.fasting_windows FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on water_logs" ON public.water_logs;
 CREATE POLICY "Allow all actions on water_logs" ON public.water_logs FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on sleep_logs" ON public.sleep_logs;
 CREATE POLICY "Allow all actions on sleep_logs" ON public.sleep_logs FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on body_metrics" ON public.body_metrics;
 CREATE POLICY "Allow all actions on body_metrics" ON public.body_metrics FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on gyms" ON public.gyms;
 CREATE POLICY "Allow all actions on gyms" ON public.gyms FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on gym_staff" ON public.gym_staff;
 CREATE POLICY "Allow all actions on gym_staff" ON public.gym_staff FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on gym_memberships" ON public.gym_memberships;
 CREATE POLICY "Allow all actions on gym_memberships" ON public.gym_memberships FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on trainer_assignments" ON public.trainer_assignments;
 CREATE POLICY "Allow all actions on trainer_assignments" ON public.trainer_assignments FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on classes" ON public.classes;
 CREATE POLICY "Allow all actions on classes" ON public.classes FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on class_bookings" ON public.class_bookings;
 CREATE POLICY "Allow all actions on class_bookings" ON public.class_bookings FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on attendance_logs" ON public.attendance_logs;
 CREATE POLICY "Allow all actions on attendance_logs" ON public.attendance_logs FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on payment_transactions" ON public.payment_transactions;
 CREATE POLICY "Allow all actions on payment_transactions" ON public.payment_transactions FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on gym_equipment" ON public.gym_equipment;
 CREATE POLICY "Allow all actions on gym_equipment" ON public.gym_equipment FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all actions on progress_notes" ON public.progress_notes;
 CREATE POLICY "Allow all actions on progress_notes" ON public.progress_notes FOR ALL USING (true);
 
 -- Indices for performance

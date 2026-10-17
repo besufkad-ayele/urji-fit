@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
+const DEMO_ACCOUNTS = {
+  'bes@urjifit.com': {
+    role: 'member',
+    otp: '123456',
+  },
+  'owner@gymone.com': {
+    role: 'gym_owner',
+    otp: '666666',
+  },
+  'coach@urjifit.com': {
+    role: 'trainer',
+    otp: '222222',
+  },
+  'admin@urjifit.com': {
+    role: 'platform_admin',
+    otp: '999999',
+  },
+} as const;
+
 export async function POST(req: NextRequest) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
@@ -16,8 +35,6 @@ export async function POST(req: NextRequest) {
     const cleanCred = credential.trim();
     const cleanOtp = otp.trim();
 
-    console.log('[AUTH API] Login attempt:', { credential: cleanCred, otp: cleanOtp });
-
     // 1. Look up user by phone or email
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
@@ -25,10 +42,7 @@ export async function POST(req: NextRequest) {
       .or(`phone.eq.${cleanCred},email.eq.${cleanCred}`)
       .maybeSingle();
 
-    console.log('[AUTH API] User lookup result:', { user: user?.email, error: userError?.message });
-
     if (userError || !user) {
-      console.log('[AUTH API] User not found:', cleanCred);
       return NextResponse.json(
         { error: 'No account found with this phone or email. Please ask your administrator to register you.' },
         { status: 404 }
@@ -36,45 +50,16 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Validate OTP
-    // Demo accounts: check if email contains @urjifit.com or specific phone numbers
-    const demoEmails = ['admin@urjifit.com', 'bes@urjifit.com', 'coach@urjifit.com', 'mike@urjifit.com', 
-                       'ruth@urjifit.com', 'member1@urjifit.com', 'owner@gymone.com', 'sarah@fitnesshub.com'];
-    const demoPhones = ['+251900000000', '+251911000001', '+251911000002', '+251911000010', 
-                       '+251911000011', '+251911000012', '+251912345678', '+251912000001'];
-    
-    const isDemoLogin = 
-      (user.email && demoEmails.includes(user.email)) ||
-      (user.phone && demoPhones.includes(user.phone)) ||
-      (user.email && user.email.includes('@urjifit.com')) ||
-      (user.email && user.email.includes('@gymone.com')) ||
-      (user.email && user.email.includes('@fitnesshub.com'));
-
-    console.log('[AUTH API] Demo login check:', { isDemoLogin, email: user.email, phone: user.phone });
+    const normalizedEmail =
+      typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+    const demoAccount = Object.entries(DEMO_ACCOUNTS).find(
+      ([email]) => normalizedEmail === email
+    )?.[1];
+    const isDemoLogin = Boolean(demoAccount && cleanOtp === demoAccount.otp);
 
     let validOtpId: string | null = null;
 
-    if (isDemoLogin) {
-      // Find valid OTP for demo account (can be reused, ignore is_consumed)
-      const { data: demoOtp } = await supabaseAdmin
-        .from('otps')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('code', cleanOtp)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      console.log('[AUTH API] Demo OTP lookup:', { found: !!demoOtp, code: cleanOtp });
-
-      if (!demoOtp) {
-        return NextResponse.json(
-          { error: 'Invalid OTP code. Please check the demo login buttons.' },
-          { status: 401 }
-        );
-      }
-      validOtpId = demoOtp.id;
-    } else {
+    if (!isDemoLogin) {
       const { data: validOtp, error: otpError } = await supabaseAdmin
         .from('otps')
         .select('*')
@@ -114,6 +99,9 @@ export async function POST(req: NextRequest) {
         current_device_id: deviceId,
         device_name: deviceName || 'Web Browser',
         last_active_at: new Date().toISOString(),
+        ...(isDemoLogin && demoAccount && user.role !== demoAccount.role
+          ? { role: demoAccount.role }
+          : {}),
       })
       .eq('id', user.id)
       .select('*')
