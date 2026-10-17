@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   phone TEXT UNIQUE,
   email TEXT UNIQUE,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'trainer', 'gym_owner', 'admin', 'platform_admin')),
   tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'premium')),
   subscription_status TEXT NOT NULL DEFAULT 'active' CHECK (subscription_status IN ('active', 'expired', 'canceled', 'trial')),
   subscription_expires_at TIMESTAMPTZ,
@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS public.users (
   target_bedtime TEXT DEFAULT '23:00',
   target_waketime TEXT DEFAULT '07:00',
   wind_down_offset_minutes INT DEFAULT 60,
+  avatar_url TEXT,
+  bio TEXT,
+  certifications TEXT[],
+  specializations TEXT[],
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -175,6 +179,180 @@ CREATE TABLE IF NOT EXISTS public.body_metrics (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- ==============================================================================
+-- GYM MANAGEMENT SYSTEM TABLES
+-- ==============================================================================
+
+-- 13. Gyms (Locations/Facilities)
+CREATE TABLE IF NOT EXISTS public.gyms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  owner_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  address TEXT,
+  city TEXT,
+  state TEXT,
+  zip_code TEXT,
+  country TEXT DEFAULT 'Ethiopia',
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  logo_url TEXT,
+  description TEXT,
+  operating_hours JSONB, -- e.g., {"monday": "06:00-22:00", "tuesday": "06:00-22:00"}
+  amenities TEXT[], -- ["parking", "showers", "lockers", "wifi", "cafe"]
+  capacity INT DEFAULT 100,
+  monthly_revenue NUMERIC(10, 2) DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 14. Gym Staff (Trainers, Receptionists, etc.)
+CREATE TABLE IF NOT EXISTS public.gym_staff (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  position TEXT NOT NULL CHECK (position IN ('trainer', 'head_trainer', 'receptionist', 'manager', 'maintenance')),
+  hire_date DATE DEFAULT CURRENT_DATE,
+  hourly_rate NUMERIC(8, 2),
+  salary NUMERIC(10, 2),
+  commission_rate NUMERIC(4, 2), -- percentage, e.g., 15.00 for 15%
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'on_leave', 'terminated')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(gym_id, user_id)
+);
+
+-- 15. Gym Memberships
+CREATE TABLE IF NOT EXISTS public.gym_memberships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  membership_type TEXT NOT NULL CHECK (membership_type IN ('monthly', 'quarterly', 'annual', 'day_pass', 'class_pack')),
+  price NUMERIC(8, 2) NOT NULL,
+  start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  end_date DATE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'suspended', 'canceled')),
+  auto_renew BOOLEAN DEFAULT true,
+  sessions_remaining INT, -- for class packs
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 16. Trainer-Client Assignments
+CREATE TABLE IF NOT EXISTS public.trainer_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  trainer_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  assignment_type TEXT NOT NULL DEFAULT 'personal_training' CHECK (assignment_type IN ('personal_training', 'group_training', 'nutrition_coaching')),
+  sessions_per_week INT DEFAULT 3,
+  session_duration_minutes INT DEFAULT 60,
+  start_date DATE DEFAULT CURRENT_DATE,
+  end_date DATE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'paused', 'canceled')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 17. Classes/Group Sessions
+CREATE TABLE IF NOT EXISTS public.classes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  trainer_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  class_type TEXT NOT NULL CHECK (class_type IN ('yoga', 'pilates', 'spin', 'hiit', 'crossfit', 'boxing', 'zumba', 'strength', 'cardio', 'flexibility', 'other')),
+  day_of_week INT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday, 6=Saturday
+  start_time TIME NOT NULL,
+  duration_minutes INT NOT NULL DEFAULT 60,
+  capacity INT DEFAULT 20,
+  price NUMERIC(6, 2) DEFAULT 0, -- 0 if included in membership
+  difficulty_level TEXT CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced', 'all_levels')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'canceled', 'full')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 18. Class Bookings
+CREATE TABLE IF NOT EXISTS public.class_bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  class_id UUID NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  booking_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'attended', 'no_show', 'canceled')),
+  checked_in_at TIMESTAMPTZ,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(class_id, member_id, booking_date)
+);
+
+-- 19. Attendance Logs (for both classes and open gym)
+CREATE TABLE IF NOT EXISTS public.attendance_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  check_in_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  check_out_at TIMESTAMPTZ,
+  attendance_type TEXT NOT NULL DEFAULT 'open_gym' CHECK (attendance_type IN ('open_gym', 'class', 'personal_training')),
+  class_booking_id UUID REFERENCES public.class_bookings(id) ON DELETE SET NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 20. Payment Transactions
+CREATE TABLE IF NOT EXISTS public.payment_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  membership_id UUID REFERENCES public.gym_memberships(id) ON DELETE SET NULL,
+  amount NUMERIC(10, 2) NOT NULL,
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'card', 'mobile_money', 'bank_transfer', 'other')),
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('membership_fee', 'class_pack', 'personal_training', 'day_pass', 'merchandise', 'other')),
+  status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
+  payment_date TIMESTAMPTZ DEFAULT now(),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 21. Gym Equipment Inventory
+CREATE TABLE IF NOT EXISTS public.gym_equipment (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  equipment_type TEXT NOT NULL CHECK (equipment_type IN ('cardio', 'strength', 'free_weights', 'functional', 'accessories', 'other')),
+  brand TEXT,
+  model TEXT,
+  quantity INT DEFAULT 1,
+  purchase_date DATE,
+  purchase_price NUMERIC(10, 2),
+  condition TEXT DEFAULT 'good' CHECK (condition IN ('excellent', 'good', 'fair', 'poor', 'broken')),
+  maintenance_schedule TEXT, -- e.g., "monthly", "quarterly"
+  last_maintenance_date DATE,
+  next_maintenance_date DATE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'maintenance', 'retired')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 22. Member Progress Notes (Trainer observations)
+CREATE TABLE IF NOT EXISTS public.progress_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trainer_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  gym_id UUID REFERENCES public.gyms(id) ON DELETE CASCADE,
+  note_date DATE DEFAULT CURRENT_DATE,
+  note_type TEXT CHECK (note_type IN ('assessment', 'progress', 'injury', 'goal_update', 'general')),
+  content TEXT NOT NULL,
+  measurements JSONB, -- {"weight": 75, "body_fat": 18.5, "muscle_mass": 62}
+  photos TEXT[], -- URLs to progress photos
+  is_private BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Enable Row Level Security (RLS) on all public tables
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.otps ENABLE ROW LEVEL SECURITY;
@@ -188,6 +366,16 @@ ALTER TABLE public.fasting_windows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.water_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.body_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gyms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trainer_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.class_bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.progress_notes ENABLE ROW LEVEL SECURITY;
 
 -- Allow read/write for service_role (bypasses RLS) and create permissive policy for users
 -- Note: Service role has full access by default. We add policies for authenticated user access.
@@ -205,13 +393,47 @@ CREATE POLICY "Allow all actions on fasting_windows" ON public.fasting_windows F
 CREATE POLICY "Allow all actions on water_logs" ON public.water_logs FOR ALL USING (true);
 CREATE POLICY "Allow all actions on sleep_logs" ON public.sleep_logs FOR ALL USING (true);
 CREATE POLICY "Allow all actions on body_metrics" ON public.body_metrics FOR ALL USING (true);
+CREATE POLICY "Allow all actions on gyms" ON public.gyms FOR ALL USING (true);
+CREATE POLICY "Allow all actions on gym_staff" ON public.gym_staff FOR ALL USING (true);
+CREATE POLICY "Allow all actions on gym_memberships" ON public.gym_memberships FOR ALL USING (true);
+CREATE POLICY "Allow all actions on trainer_assignments" ON public.trainer_assignments FOR ALL USING (true);
+CREATE POLICY "Allow all actions on classes" ON public.classes FOR ALL USING (true);
+CREATE POLICY "Allow all actions on class_bookings" ON public.class_bookings FOR ALL USING (true);
+CREATE POLICY "Allow all actions on attendance_logs" ON public.attendance_logs FOR ALL USING (true);
+CREATE POLICY "Allow all actions on payment_transactions" ON public.payment_transactions FOR ALL USING (true);
+CREATE POLICY "Allow all actions on gym_equipment" ON public.gym_equipment FOR ALL USING (true);
+CREATE POLICY "Allow all actions on progress_notes" ON public.progress_notes FOR ALL USING (true);
 
 -- Indices for performance
 CREATE INDEX IF NOT EXISTS idx_users_phone ON public.users(phone);
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON public.users(role);
 CREATE INDEX IF NOT EXISTS idx_otps_code_user ON public.otps(code, user_id);
 CREATE INDEX IF NOT EXISTS idx_workout_sessions_user_date ON public.workout_sessions(user_id, session_date);
 CREATE INDEX IF NOT EXISTS idx_food_logs_user_date ON public.food_logs(user_id, log_date);
 CREATE INDEX IF NOT EXISTS idx_water_logs_user_date ON public.water_logs(user_id, log_date);
 CREATE INDEX IF NOT EXISTS idx_sleep_logs_user_date ON public.sleep_logs(user_id, log_date);
 CREATE INDEX IF NOT EXISTS idx_body_metrics_user_date ON public.body_metrics(user_id, entry_date);
+CREATE INDEX IF NOT EXISTS idx_gyms_owner ON public.gyms(owner_id);
+CREATE INDEX IF NOT EXISTS idx_gyms_status ON public.gyms(status);
+CREATE INDEX IF NOT EXISTS idx_gym_staff_gym ON public.gym_staff(gym_id);
+CREATE INDEX IF NOT EXISTS idx_gym_staff_user ON public.gym_staff(user_id);
+CREATE INDEX IF NOT EXISTS idx_gym_memberships_gym ON public.gym_memberships(gym_id);
+CREATE INDEX IF NOT EXISTS idx_gym_memberships_member ON public.gym_memberships(member_id);
+CREATE INDEX IF NOT EXISTS idx_gym_memberships_status ON public.gym_memberships(status);
+CREATE INDEX IF NOT EXISTS idx_trainer_assignments_trainer ON public.trainer_assignments(trainer_id);
+CREATE INDEX IF NOT EXISTS idx_trainer_assignments_client ON public.trainer_assignments(client_id);
+CREATE INDEX IF NOT EXISTS idx_classes_gym ON public.classes(gym_id);
+CREATE INDEX IF NOT EXISTS idx_classes_trainer ON public.classes(trainer_id);
+CREATE INDEX IF NOT EXISTS idx_classes_day_time ON public.classes(day_of_week, start_time);
+CREATE INDEX IF NOT EXISTS idx_class_bookings_class ON public.class_bookings(class_id);
+CREATE INDEX IF NOT EXISTS idx_class_bookings_member ON public.class_bookings(member_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_gym ON public.attendance_logs(gym_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_member ON public.attendance_logs(member_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_checkin ON public.attendance_logs(check_in_at);
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_gym ON public.payment_transactions(gym_id);
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_member ON public.payment_transactions(member_id);
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_date ON public.payment_transactions(payment_date);
+CREATE INDEX IF NOT EXISTS idx_gym_equipment_gym ON public.gym_equipment(gym_id);
+CREATE INDEX IF NOT EXISTS idx_progress_notes_trainer ON public.progress_notes(trainer_id);
+CREATE INDEX IF NOT EXISTS idx_progress_notes_client ON public.progress_notes(client_id);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function PATCH(req: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { userId, tier, subscription_status, subscription_expires_at } = await req.json();
 
     if (!userId) {

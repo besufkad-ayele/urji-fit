@@ -27,7 +27,8 @@ export default function Navigation({ userFullName, userRole, onLogout }: Navigat
   const pathname = usePathname();
   const router = useRouter();
 
-  const navItems = [
+  // Define navigation items based on role
+  const getMemberNavItems = () => [
     { label: 'Today', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Train', href: '/train', icon: Dumbbell },
     { label: 'Build', href: '/build', icon: Hammer },
@@ -37,6 +38,27 @@ export default function Navigation({ userFullName, userRole, onLogout }: Navigat
     { label: 'Sleep', href: '/sleep', icon: Moon },
     { label: 'Track', href: '/track', icon: LineChart },
   ];
+
+  const getTrainerNavItems = () => [
+    { label: 'Dashboard', href: '/trainer', icon: LayoutDashboard },
+    { label: 'My Clients', href: '/trainer', icon: Users },
+    { label: 'Schedule', href: '/trainer', icon: LineChart },
+  ];
+
+  const getGymOwnerNavItems = () => [
+    { label: 'Dashboard', href: '/gym-owner', icon: LayoutDashboard },
+    { label: 'Members', href: '/gym-owner', icon: Users },
+    { label: 'Staff', href: '/gym-owner', icon: Dumbbell },
+    { label: 'Classes', href: '/gym-owner', icon: LineChart },
+  ];
+
+  // Select nav items based on role
+  let navItems = getMemberNavItems();
+  if (userRole === 'trainer') {
+    navItems = getTrainerNavItems();
+  } else if (userRole === 'gym_owner') {
+    navItems = getGymOwnerNavItems();
+  }
 
   const handleLogout = () => {
     if (onLogout) {
@@ -90,7 +112,7 @@ export default function Navigation({ userFullName, userRole, onLogout }: Navigat
               );
             })}
 
-            {userRole === 'admin' && (
+            {(userRole === 'admin' || userRole === 'platform_admin') && (
               <div className="pt-3 mt-3 border-t border-[#14201A]/10">
                 <Link
                   href="/admin"

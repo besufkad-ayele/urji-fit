@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import DisclaimerModal from '@/components/DisclaimerModal';
 import { useUserSession } from '@/hooks/useUserSession';
@@ -22,7 +23,39 @@ import Link from 'next/link';
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { user, loading, refreshUser } = useUserSession();
+  
+  // IMMEDIATE early return for non-member roles - don't even set up state
+  if (typeof window !== 'undefined') {
+    const storedUser = localStorage.getItem('urji_user');
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        if (parsed.role === 'admin' || parsed.role === 'platform_admin') {
+          router.replace('/admin');
+          return <div className="flex items-center justify-center min-h-screen bg-[#F3EFE5]">
+            <p className="font-serif text-2xl text-[#0B3D2E]">Redirecting to Admin Panel...</p>
+          </div>;
+        }
+        if (parsed.role === 'gym_owner') {
+          router.replace('/gym-owner');
+          return <div className="flex items-center justify-center min-h-screen bg-[#F3EFE5]">
+            <p className="font-serif text-2xl text-[#0B3D2E]">Redirecting to Gym Owner Dashboard...</p>
+          </div>;
+        }
+        if (parsed.role === 'trainer') {
+          router.replace('/trainer');
+          return <div className="flex items-center justify-center min-h-screen bg-[#F3EFE5]">
+            <p className="font-serif text-2xl text-[#0B3D2E]">Redirecting to Trainer Dashboard...</p>
+          </div>;
+        }
+      } catch (e) {
+        console.error('Error parsing stored user:', e);
+      }
+    }
+  }
+  
   const [quickWeight, setQuickWeight] = useState('');
   const [quickWeightSaved, setQuickWeightSaved] = useState(false);
   const [monthlyDue, setMonthlyDue] = useState(false);
@@ -116,8 +149,30 @@ export default function DashboardPage() {
     }
   }, [todayDateStr]);
 
+  // Redirect non-members to their respective dashboards
   useEffect(() => {
-    if (user?.id) {
+    console.log('Dashboard useEffect - loading:', loading, 'user role:', user?.role);
+    if (!loading && user) {
+      if (user.role === 'admin' || user.role === 'platform_admin') {
+        console.log('Redirecting admin to /admin page');
+        router.replace('/admin');
+        return;
+      }
+      if (user.role === 'gym_owner') {
+        console.log('Redirecting gym owner to /gym-owner page');
+        router.replace('/gym-owner');
+        return;
+      }
+      if (user.role === 'trainer') {
+        console.log('Redirecting trainer to /trainer page');
+        router.replace('/trainer');
+        return;
+      }
+    }
+  }, [loading, user, router]);
+
+  useEffect(() => {
+    if (user?.id && user?.role === 'member') {
       loadDashboardData(user.id);
     }
   }, [user, loadDashboardData]);
@@ -148,6 +203,11 @@ export default function DashboardPage() {
         <p className="font-serif text-2xl text-[#0B3D2E]">Loading Today's Planner…</p>
       </div>
     );
+  }
+
+  // Don't render dashboard for non-members (they'll be redirected)
+  if (user?.role && user.role !== 'member') {
+    return null;
   }
 
   const calorieTarget = user?.daily_calorie_target || 2000;

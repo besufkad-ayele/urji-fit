@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { userId, exerciseName, targetMaxReps, currentWeight } = await req.json();
 
     if (!userId || !exerciseName || !targetMaxReps || currentWeight === undefined) {

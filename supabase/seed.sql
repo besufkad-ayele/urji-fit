@@ -1,29 +1,109 @@
 -- ==============================================================================
--- Urji Fit Seeds: Admin Account, Demo Account, Seed Workout Program
+-- Urji Fit Seeds: Users, Gyms, Trainers, Members, Classes, Demo Data
 -- ==============================================================================
 
--- 1. Insert Initial Admin User
+-- 1. Insert Platform Admin User
 INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
   '+251900000000',
   'admin@urjifit.com',
   'Urji Admin',
-  'admin',
+  'platform_admin',
   'premium',
   'active',
   true,
   now()
 ) ON CONFLICT (email) DO NOTHING;
 
--- 2. Insert Demo User (Bes)
+-- 2. Insert Demo Gym Owners
+INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at, bio, certifications)
+VALUES 
+(
+  '00000000-0000-0000-0000-000000000010',
+  '+251911000001',
+  'owner@gymone.com',
+  'Demo Gym Owner',
+  'gym_owner',
+  'premium',
+  'active',
+  true,
+  now(),
+  'Passionate about fitness and building a community of healthy individuals.',
+  ARRAY['Gym Management Certification', 'Business Management']
+),
+(
+  '00000000-0000-0000-0000-000000000011',
+  '+251911000002',
+  'sarah@fitnesshub.com',
+  'Sarah Tadesse',
+  'gym_owner',
+  'premium',
+  'active',
+  true,
+  now(),
+  'Former athlete turned fitness entrepreneur.',
+  ARRAY['Sports Science Degree', 'CrossFit Level 2']
+) ON CONFLICT (email) DO NOTHING;
+
+-- 3. Insert Demo Trainers
+INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at, bio, certifications, specializations, avatar_url)
+VALUES 
+(
+  '00000000-0000-0000-0000-000000000020',
+  '+251911000010',
+  'coach@urjifit.com',
+  'Demo Coach',
+  'trainer',
+  'premium',
+  'active',
+  true,
+  now(),
+  'Certified personal trainer with 5+ years experience in strength and conditioning.',
+  ARRAY['NASM-CPT', 'CrossFit Level 1', 'Nutrition Specialist'],
+  ARRAY['Strength Training', 'Weight Loss', 'Athletic Performance'],
+  null
+),
+(
+  '00000000-0000-0000-0000-000000000021',
+  '+251911000011',
+  'mike@urjifit.com',
+  'Mike Alemayehu',
+  'trainer',
+  'premium',
+  'active',
+  true,
+  now(),
+  'Specializing in functional training and injury rehabilitation.',
+  ARRAY['ACE-CPT', 'Functional Movement Screen', 'Corrective Exercise'],
+  ARRAY['Functional Training', 'Rehabilitation', 'Mobility'],
+  null
+),
+(
+  '00000000-0000-0000-0000-000000000022',
+  '+251911000012',
+  'ruth@urjifit.com',
+  'Ruth Bekele',
+  'trainer',
+  'premium',
+  'active',
+  true,
+  now(),
+  'Yoga instructor and mindfulness coach with holistic approach to fitness.',
+  ARRAY['RYT-500', 'Pilates Certification', 'Meditation Teacher'],
+  ARRAY['Yoga', 'Pilates', 'Flexibility', 'Mind-Body'],
+  null
+) ON CONFLICT (email) DO NOTHING;
+
+-- 4. Insert Demo Members
 INSERT INTO public.users (id, phone, email, full_name, role, tier, subscription_status, onboarding_completed, disclaimer_acknowledged_at, daily_calorie_target, daily_protein_target, daily_carb_target, daily_fat_target, daily_water_target_ml)
-VALUES (
+VALUES 
+(
   '00000000-0000-0000-0000-000000000002',
   '+251912345678',
   'bes@urjifit.com',
-  'Besufkad Ayele',
-  'user',
+  'Besufikad Ayele',
+  'member',
   'premium',
   'active',
   true,
@@ -33,25 +113,194 @@ VALUES (
   220,
   65,
   3000
+),
+(
+  '00000000-0000-0000-0000-000000000030',
+  '+251912000001',
+  'member1@urjifit.com',
+  'Demo Member',
+  'member',
+  'premium',
+  'active',
+  true,
+  now(),
+  2000,
+  150,
+  200,
+  60,
+  2500
+),
+(
+  '00000000-0000-0000-0000-000000000031',
+  '+251912000002',
+  'john@example.com',
+  'John Tesfaye',
+  'member',
+  'free',
+  'active',
+  true,
+  now(),
+  2400,
+  180,
+  240,
+  70,
+  3000
+),
+(
+  '00000000-0000-0000-0000-000000000032',
+  '+251912000003',
+  'marta@example.com',
+  'Marta Solomon',
+  'member',
+  'premium',
+  'active',
+  true,
+  now(),
+  1800,
+  120,
+  180,
+  50,
+  2500
 ) ON CONFLICT (email) DO NOTHING;
 
--- 3. Insert Ready-to-Use 6-Digit OTP for Demo User: '123456'
-INSERT INTO public.otps (user_id, code, expires_at)
-VALUES (
-  '00000000-0000-0000-0000-000000000002',
-  '123456',
-  now() + interval '30 days'
+-- 5. Insert OTPs for all demo users
+INSERT INTO public.otps (user_id, code, expires_at) VALUES
+('00000000-0000-0000-0000-000000000001', '999999', now() + interval '30 days'), -- Platform Admin
+('00000000-0000-0000-0000-000000000010', '666666', now() + interval '30 days'), -- Gym Owner 1
+('00000000-0000-0000-0000-000000000011', '555555', now() + interval '30 days'), -- Gym Owner 2
+('00000000-0000-0000-0000-000000000020', '222222', now() + interval '30 days'), -- Coach
+('00000000-0000-0000-0000-000000000021', '333333', now() + interval '30 days'), -- Mike
+('00000000-0000-0000-0000-000000000022', '444444', now() + interval '30 days'), -- Ruth
+('00000000-0000-0000-0000-000000000002', '123456', now() + interval '30 days'), -- Bes (Member)
+('00000000-0000-0000-0000-000000000030', '111111', now() + interval '30 days'); -- Demo Member
+
+-- 6. Insert Demo Gyms
+INSERT INTO public.gyms (id, name, owner_id, address, city, state, country, phone, email, description, operating_hours, amenities, capacity, monthly_revenue, status)
+VALUES
+(
+  '10000000-0000-0000-0000-000000000001',
+  'Urji Fit Bole',
+  '00000000-0000-0000-0000-000000000010',
+  'Bole Road, Next to Edna Mall',
+  'Addis Ababa',
+  'Addis Ababa',
+  'Ethiopia',
+  '+251911234567',
+  'bole@urjifit.com',
+  'Modern fitness facility with state-of-the-art equipment and expert trainers.',
+  '{"monday": "05:00-22:00", "tuesday": "05:00-22:00", "wednesday": "05:00-22:00", "thursday": "05:00-22:00", "friday": "05:00-22:00", "saturday": "06:00-20:00", "sunday": "07:00-18:00"}',
+  ARRAY['parking', 'showers', 'lockers', 'wifi', 'cafe', 'sauna', 'pool'],
+  150,
+  285000.00,
+  'active'
+),
+(
+  '10000000-0000-0000-0000-000000000002',
+  'Fitness Hub Kazanchis',
+  '00000000-0000-0000-0000-000000000011',
+  'Kazanchis Business District',
+  'Addis Ababa',
+  'Addis Ababa',
+  'Ethiopia',
+  '+251911234568',
+  'kazanchis@fitnesshub.com',
+  'CrossFit box with functional training focus and group classes.',
+  '{"monday": "06:00-21:00", "tuesday": "06:00-21:00", "wednesday": "06:00-21:00", "thursday": "06:00-21:00", "friday": "06:00-21:00", "saturday": "07:00-19:00", "sunday": "08:00-16:00"}',
+  ARRAY['parking', 'showers', 'lockers', 'wifi'],
+  80,
+  165000.00,
+  'active'
 );
 
--- Also an OTP for Admin: '999999'
-INSERT INTO public.otps (user_id, code, expires_at)
-VALUES (
-  '00000000-0000-0000-0000-000000000001',
-  '999999',
-  now() + interval '30 days'
-);
+-- 7. Insert Gym Staff (Trainers at Gyms)
+INSERT INTO public.gym_staff (gym_id, user_id, position, hire_date, hourly_rate, commission_rate, status)
+VALUES
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', 'head_trainer', '2024-01-15', 500.00, 15.00, 'active'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', 'trainer', '2024-03-01', 350.00, 10.00, 'active'),
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'trainer', '2024-02-10', 400.00, 12.00, 'active');
 
--- 4. Seed 6-Day Workout Program (Global Templates)
+-- 8. Insert Gym Memberships
+INSERT INTO public.gym_memberships (gym_id, member_id, membership_type, price, start_date, end_date, status, auto_renew)
+VALUES
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'monthly', 1500.00, CURRENT_DATE - 15, CURRENT_DATE + 15, 'active', true),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000030', 'quarterly', 4000.00, CURRENT_DATE - 30, CURRENT_DATE + 60, 'active', true),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000031', 'annual', 15000.00, CURRENT_DATE - 60, CURRENT_DATE + 305, 'active', true),
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000032', 'monthly', 1200.00, CURRENT_DATE - 10, CURRENT_DATE + 20, 'active', true);
+
+-- 9. Insert Trainer Assignments
+INSERT INTO public.trainer_assignments (gym_id, trainer_id, client_id, assignment_type, sessions_per_week, session_duration_minutes, start_date, status, notes)
+VALUES
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000002', 'personal_training', 3, 60, CURRENT_DATE - 14, 'active', 'Focus on strength building and progressive overload'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000031', 'personal_training', 2, 45, CURRENT_DATE - 20, 'active', 'Injury rehabilitation - lower back'),
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000032', 'personal_training', 2, 60, CURRENT_DATE - 7, 'active', 'Flexibility and mobility focus');
+
+-- 10. Insert Classes
+INSERT INTO public.classes (gym_id, trainer_id, name, description, class_type, day_of_week, start_time, duration_minutes, capacity, price, difficulty_level, status)
+VALUES
+-- Urji Fit Bole Classes
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', 'Morning HIIT', 'High intensity interval training to kickstart your day', 'hiit', 1, '06:00', 45, 25, 0, 'intermediate', 'active'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000020', 'Evening Strength', 'Build muscle with compound movements', 'strength', 1, '18:00', 60, 20, 0, 'all_levels', 'active'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000021', 'Functional Fitness', 'Real-world movement patterns', 'strength', 3, '17:30', 60, 20, 0, 'intermediate', 'active'),
+-- Fitness Hub Classes
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'Sunrise Yoga', 'Flow yoga to energize your morning', 'yoga', 2, '06:30', 60, 15, 200, 'beginner', 'active'),
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000022', 'Power Pilates', 'Core strengthening pilates', 'pilates', 4, '18:00', 50, 12, 200, 'intermediate', 'active');
+
+-- 11. Insert Class Bookings
+INSERT INTO public.class_bookings (class_id, member_id, booking_date, status, checked_in_at)
+SELECT c.id, m.id::uuid, CURRENT_DATE, 'attended', CURRENT_DATE + c.start_time 
+FROM public.classes c
+CROSS JOIN (VALUES 
+  ('00000000-0000-0000-0000-000000000002'),
+  ('00000000-0000-0000-0000-000000000030')
+) m(id)
+WHERE c.gym_id = '10000000-0000-0000-0000-000000000001'
+LIMIT 4;
+
+-- 12. Insert Attendance Logs
+INSERT INTO public.attendance_logs (gym_id, member_id, check_in_at, check_out_at, attendance_type)
+VALUES
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', CURRENT_DATE + time '07:30', CURRENT_DATE + time '09:00', 'personal_training'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000030', CURRENT_DATE + time '06:00', CURRENT_DATE + time '07:30', 'class'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000031', CURRENT_DATE - 1 + time '17:00', CURRENT_DATE - 1 + time '18:30', 'open_gym'),
+('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000032', CURRENT_DATE + time '06:30', CURRENT_DATE + time '08:00', 'class');
+
+-- 13. Insert Payment Transactions
+INSERT INTO public.payment_transactions (gym_id, member_id, membership_id, amount, payment_method, transaction_type, status, payment_date)
+SELECT 
+  gm.gym_id,
+  gm.member_id,
+  gm.id,
+  gm.price,
+  'card',
+  'membership_fee',
+  'completed',
+  gm.start_date
+FROM public.gym_memberships gm;
+
+-- 14. Insert Gym Equipment
+INSERT INTO public.gym_equipment (gym_id, name, equipment_type, brand, quantity, purchase_date, condition, status)
+VALUES
+('10000000-0000-0000-0000-000000000001', 'Treadmill', 'cardio', 'Life Fitness', 8, '2024-01-01', 'good', 'active'),
+('10000000-0000-0000-0000-000000000001', 'Power Rack', 'strength', 'Rogue', 4, '2024-01-01', 'excellent', 'active'),
+('10000000-0000-0000-0000-000000000001', 'Dumbbells Set (5-50kg)', 'free_weights', 'York', 15, '2024-01-01', 'good', 'active'),
+('10000000-0000-0000-0000-000000000001', 'Rowing Machine', 'cardio', 'Concept2', 5, '2024-01-15', 'excellent', 'active'),
+('10000000-0000-0000-0000-000000000002', 'Assault Bike', 'cardio', 'Rogue', 3, '2024-02-01', 'good', 'active'),
+('10000000-0000-0000-0000-000000000002', 'Olympic Barbell', 'strength', 'Rogue', 10, '2024-02-01', 'excellent', 'active'),
+('10000000-0000-0000-0000-000000000002', 'Yoga Mat', 'accessories', 'Manduka', 20, '2024-02-10', 'good', 'active');
+
+-- 15. Insert Progress Notes
+INSERT INTO public.progress_notes (trainer_id, client_id, gym_id, note_date, note_type, content, measurements)
+VALUES
+('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 
+  CURRENT_DATE - 7, 'assessment', 
+  'Initial assessment: Good baseline strength. Focus areas: upper body push strength, core stability. Goals: Increase bench press to 100kg in 12 weeks.',
+  '{"weight": 82.5, "body_fat": 18.5, "bench_press_1rm": 75}'::jsonb),
+('00000000-0000-0000-0000-000000000020', '00000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001',
+  CURRENT_DATE, 'progress',
+  'Week 2: Good progress on progressive overload. Bench press up to 80kg. Client reporting good recovery and energy levels.',
+  '{"weight": 82.0, "bench_press_5rm": 80}'::jsonb);
+
+-- 16. Seed 6-Day Workout Program (Global Templates)
 -- Template 1: Chest + Triceps (Push - Monday)
 INSERT INTO public.workout_templates (id, user_id, name, tag, days, cardio)
 VALUES (
@@ -164,7 +413,7 @@ INSERT INTO public.workout_exercises (workout_template_id, name, spec, target_se
 ('10000000-0000-0000-0000-000000000006', 'Lateral Raise', '2×12–15', 2, 12, 15, 'https://www.youtube.com/results?search_query=lateral+raise+form', 5),
 ('10000000-0000-0000-0000-000000000006', 'Plank', '3×30–60 sec', 3, 30, 60, 'https://www.youtube.com/results?search_query=plank+form', 6);
 
--- 5. Seed some initial demo logs for Bes (weight history, meals, hydration, sleep)
+-- 17. Seed some initial demo logs for Bes (weight history, meals, hydration, sleep)
 INSERT INTO public.body_metrics (user_id, entry_date, weight_kg, waist_cm, is_monthly_checkin)
 VALUES 
 ('00000000-0000-0000-0000-000000000002', CURRENT_DATE - 6, 82.5, 88.5, true),

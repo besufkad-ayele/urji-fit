@@ -3,7 +3,7 @@ export interface User {
   phone: string | null;
   email: string | null;
   full_name: string;
-  role: 'user' | 'admin';
+  role: 'member' | 'trainer' | 'gym_owner' | 'admin' | 'platform_admin';
   tier: 'free' | 'premium';
   subscription_status: 'active' | 'expired' | 'canceled' | 'trial';
   subscription_expires_at: string | null;
@@ -20,6 +20,10 @@ export interface User {
   target_bedtime: string;
   target_waketime: string;
   wind_down_offset_minutes: number;
+  avatar_url: string | null;
+  bio: string | null;
+  certifications: string[] | null;
+  specializations: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -157,4 +161,187 @@ export interface BodyMetric {
   body_fat_pct: number | null;
   is_monthly_checkin: boolean;
   created_at: string;
+}
+
+// ==============================================================================
+// GYM MANAGEMENT TYPES
+// ==============================================================================
+
+export interface Gym {
+  id: string;
+  name: string;
+  owner_id: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  country: string;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  logo_url: string | null;
+  description: string | null;
+  operating_hours: Record<string, string> | null;
+  amenities: string[] | null;
+  capacity: number;
+  monthly_revenue: number;
+  status: 'active' | 'inactive' | 'suspended';
+  created_at: string;
+  updated_at: string;
+  owner?: User;
+}
+
+export interface GymStaff {
+  id: string;
+  gym_id: string;
+  user_id: string;
+  position: 'trainer' | 'head_trainer' | 'receptionist' | 'manager' | 'maintenance';
+  hire_date: string;
+  hourly_rate: number | null;
+  salary: number | null;
+  commission_rate: number | null;
+  status: 'active' | 'on_leave' | 'terminated';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  user?: User;
+  gym?: Gym;
+}
+
+export interface GymMembership {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  membership_type: 'monthly' | 'quarterly' | 'annual' | 'day_pass' | 'class_pack';
+  price: number;
+  start_date: string;
+  end_date: string | null;
+  status: 'active' | 'expired' | 'suspended' | 'canceled';
+  auto_renew: boolean;
+  sessions_remaining: number | null;
+  created_at: string;
+  updated_at: string;
+  member?: User;
+  gym?: Gym;
+}
+
+export interface TrainerAssignment {
+  id: string;
+  gym_id: string;
+  trainer_id: string;
+  client_id: string;
+  assignment_type: 'personal_training' | 'group_training' | 'nutrition_coaching';
+  sessions_per_week: number;
+  session_duration_minutes: number;
+  start_date: string;
+  end_date: string | null;
+  status: 'active' | 'completed' | 'paused' | 'canceled';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  trainer?: User;
+  client?: User;
+  gym?: Gym;
+}
+
+export interface Class {
+  id: string;
+  gym_id: string;
+  trainer_id: string | null;
+  name: string;
+  description: string | null;
+  class_type: 'yoga' | 'pilates' | 'spin' | 'hiit' | 'crossfit' | 'boxing' | 'zumba' | 'strength' | 'cardio' | 'flexibility' | 'other';
+  day_of_week: number;
+  start_time: string;
+  duration_minutes: number;
+  capacity: number;
+  price: number;
+  difficulty_level: 'beginner' | 'intermediate' | 'advanced' | 'all_levels' | null;
+  status: 'active' | 'canceled' | 'full';
+  created_at: string;
+  updated_at: string;
+  trainer?: User;
+  gym?: Gym;
+  bookings?: ClassBooking[];
+}
+
+export interface ClassBooking {
+  id: string;
+  class_id: string;
+  member_id: string;
+  booking_date: string;
+  status: 'booked' | 'attended' | 'no_show' | 'canceled';
+  checked_in_at: string | null;
+  notes: string | null;
+  created_at: string;
+  member?: User;
+  class?: Class;
+}
+
+export interface AttendanceLog {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  check_in_at: string;
+  check_out_at: string | null;
+  attendance_type: 'open_gym' | 'class' | 'personal_training';
+  class_booking_id: string | null;
+  notes: string | null;
+  created_at: string;
+  member?: User;
+  gym?: Gym;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  membership_id: string | null;
+  amount: number;
+  payment_method: 'cash' | 'card' | 'mobile_money' | 'bank_transfer' | 'other';
+  transaction_type: 'membership_fee' | 'class_pack' | 'personal_training' | 'day_pass' | 'merchandise' | 'other';
+  status: 'pending' | 'completed' | 'failed' | 'refunded';
+  payment_date: string;
+  notes: string | null;
+  created_at: string;
+  member?: User;
+  gym?: Gym;
+}
+
+export interface GymEquipment {
+  id: string;
+  gym_id: string;
+  name: string;
+  equipment_type: 'cardio' | 'strength' | 'free_weights' | 'functional' | 'accessories' | 'other';
+  brand: string | null;
+  model: string | null;
+  quantity: number;
+  purchase_date: string | null;
+  purchase_price: number | null;
+  condition: 'excellent' | 'good' | 'fair' | 'poor' | 'broken';
+  maintenance_schedule: string | null;
+  last_maintenance_date: string | null;
+  next_maintenance_date: string | null;
+  status: 'active' | 'maintenance' | 'retired';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  gym?: Gym;
+}
+
+export interface ProgressNote {
+  id: string;
+  trainer_id: string;
+  client_id: string;
+  gym_id: string | null;
+  note_date: string;
+  note_type: 'assessment' | 'progress' | 'injury' | 'goal_update' | 'general' | null;
+  content: string;
+  measurements: Record<string, number> | null;
+  photos: string[] | null;
+  is_private: boolean;
+  created_at: string;
+  trainer?: User;
+  client?: User;
+  gym?: Gym;
 }

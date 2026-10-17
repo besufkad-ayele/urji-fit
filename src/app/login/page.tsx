@@ -65,9 +65,22 @@ export default function LoginPage() {
       localStorage.setItem('urji_user', JSON.stringify(data.user));
       localStorage.setItem('urji_user_id', data.user.id);
 
-      if (data.user.role === 'admin') {
+      console.log('Login successful - User role:', data.user.role);
+      console.log('Full user object:', data.user);
+
+      // Route based on role
+      if (data.user.role === 'admin' || data.user.role === 'platform_admin') {
+        console.log('Redirecting to /admin');
         router.push('/admin');
+      } else if (data.user.role === 'gym_owner') {
+        console.log('Redirecting to /gym-owner');
+        router.push('/gym-owner');
+      } else if (data.user.role === 'trainer') {
+        console.log('Redirecting to /trainer');
+        router.push('/trainer');
       } else {
+        // member or default
+        console.log('Redirecting to /dashboard');
         router.push('/dashboard');
       }
     } catch {
@@ -160,26 +173,74 @@ export default function LoginPage() {
         </div>
 
         {/* Quick Demo Pre-seeds */}
-        <div className="mt-6 pt-5 border-t border-[#14201A]/10 text-center">
-          <p className="text-[11px] uppercase tracking-wider text-[rgb(90,102,96)] font-semibold mb-2 flex items-center justify-center gap-1">
+        <div className="mt-6 pt-5 border-t border-[#14201A]/10">
+          <p className="text-[11px] uppercase tracking-wider text-[rgb(90,102,96)] font-semibold mb-3 flex items-center justify-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-[#C1502E]" /> Quick Demo Logins
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => handleQuickDemo('bes@urjifit.com', '123456')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 border border-[#14201A]/10 rounded-lg text-[#14201A] transition-colors flex items-center justify-center gap-1.5"
+              onClick={() => handleQuickDemo('+251900000000', '999999')}
+              className="px-3 py-2 text-xs font-medium bg-gradient-to-br from-[#C1502E] to-[#914026] hover:from-[#D15F3A] hover:to-[#A64D2E] text-white rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5"
             >
-              <UserCheck className="w-3.5 h-3.5 text-[#0B3D2E]" />
-              Bes (User)
+              <KeyRound className="w-3.5 h-3.5" />
+              Platform Admin
             </button>
             <button
               type="button"
-              onClick={() => handleQuickDemo('admin@urjifit.com', '999999')}
-              className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 border border-[#14201A]/10 rounded-lg text-[#C1502E] transition-colors flex items-center justify-center gap-1.5"
+              onClick={() => handleQuickDemo('+251911000001', '666666')}
+              className="px-3 py-2 text-xs font-medium bg-gradient-to-br from-[#0B3D2E] to-[#135440] hover:from-[#135440] hover:to-[#1A6B55] text-[#F2F7D9] rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5"
             >
-              <KeyRound className="w-3.5 h-3.5" />
-              Admin Portal
+              <ShieldAlert className="w-3.5 h-3.5" />
+              Gym Owner 1
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo('+251911000002', '555555')}
+              className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 border border-[#0B3D2E]/20 rounded-lg text-[#0B3D2E] transition-colors flex items-center justify-center gap-1.5"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              Gym Owner 2
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo('+251911000010', '222222')}
+              className="px-3 py-2 text-xs font-medium bg-white hover:bg-sky-50 border border-sky-300/50 rounded-lg text-sky-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Trainer (Coach)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo('+251911000011', '333333')}
+              className="px-3 py-2 text-xs font-medium bg-white hover:bg-sky-50 border border-sky-300/50 rounded-lg text-sky-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Trainer (Mike)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo('+251911000012', '444444')}
+              className="px-3 py-2 text-xs font-medium bg-white hover:bg-sky-50 border border-sky-300/50 rounded-lg text-sky-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Trainer (Ruth)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo('+251912345678', '123456')}
+              className="px-3 py-2 text-xs font-medium bg-white hover:bg-emerald-50 border border-emerald-300/50 rounded-lg text-emerald-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Member (Bes)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo('+251912000001', '111111')}
+              className="px-3 py-2 text-xs font-medium bg-white hover:bg-emerald-50 border border-emerald-300/50 rounded-lg text-emerald-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Member (Demo)
             </button>
           </div>
         </div>
