@@ -1,35 +1,7 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, Inter, Oswald, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import AmbientBlobs from "@/components/AmbientBlobs";
-
-const instrumentSerif = Instrument_Serif({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-instrument-serif",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const oswald = Oswald({
-  weight: ["400", "500", "600", "700"],
-  subsets: ["latin"],
-  variable: "--font-oswald",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  weight: ["400", "500", "700"],
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Urji Fit — Personal Fitness, Nutrition & Habit Planner",
@@ -45,7 +17,6 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${instrumentSerif.variable} ${inter.variable} ${oswald.variable} ${jetbrainsMono.variable}`}
     >
       <head>
         <script

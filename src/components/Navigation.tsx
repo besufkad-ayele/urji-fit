@@ -14,6 +14,7 @@ import {
   LineChart,
   ShieldCheck,
   LogOut,
+  Users,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
