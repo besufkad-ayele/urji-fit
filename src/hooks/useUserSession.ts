@@ -22,17 +22,10 @@ export function useUserSession() {
   }, []);
 
   const logout = useCallback(async () => {
-    const storedUserId = typeof window !== 'undefined' ? localStorage.getItem('urji_user_id') : null;
-    if (storedUserId) {
-      try {
-        await fetch('/api/admin/revoke-device', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: storedUserId }),
-        });
-      } catch (e) {
-        console.error('Failed to unlink device on logout:', e);
-      }
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to end the server session:', error);
     }
     if (typeof window !== 'undefined') {
       localStorage.removeItem('urji_user');
@@ -42,9 +35,9 @@ export function useUserSession() {
     router.push('/login');
   }, [router]);
 
-  const verifySession = useCallback(async (uId: string, dId: string) => {
+  const verifySession = useCallback(async () => {
     try {
-      const res = await fetch(`/api/auth/session?userId=${uId}&deviceId=${dId}`);
+      const res = await fetch('/api/auth/session');
       const data = await res.json();
       if (res.ok && data.active && data.user) {
         setUser(data.user);
@@ -72,6 +65,8 @@ export function useUserSession() {
 
   useEffect(() => {
     const dId = getOrCreateDeviceId();
+    // Keep the device identifier available to existing consumers after browser hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDeviceId(dId);
 
     const storedUser = localStorage.getItem('urji_user');
@@ -81,7 +76,7 @@ export function useUserSession() {
       try {
         const parsed = JSON.parse(storedUser);
         setUser(parsed);
-        verifySession(storedUserId, dId);
+        verifySession();
       } catch {
         setLoading(false);
       }
@@ -91,10 +86,8 @@ export function useUserSession() {
 
     // Check device lock status on tab focus and every 25 seconds
     const checkActiveLock = () => {
-      const uId = localStorage.getItem('urji_user_id');
-      const devId = localStorage.getItem('urji_device_id');
-      if (uId && devId) {
-        verifySession(uId, devId);
+      if (localStorage.getItem('urji_user_id')) {
+        verifySession();
       }
     };
 

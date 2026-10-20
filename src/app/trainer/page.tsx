@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
@@ -184,6 +185,7 @@ export default function TrainerDashboard() {
   }, [selectedClient, fetchProgressNotes]);
 
   const handleLogout = () => {
+    void fetch('/api/auth/logout', { method: 'POST' });
     localStorage.removeItem('urji_user');
     localStorage.removeItem('urji_user_id');
     router.replace('/login');
@@ -505,6 +507,10 @@ export default function TrainerDashboard() {
                 variant="primary"
               />
             )}
+            <div className="flex flex-wrap gap-2">
+              <Link href="/trainer/programs" className="rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9]">Training programs</Link>
+              <Link href="/trainer/messages" className="rounded-xl border border-[#14201A]/15 bg-[#FCFAF6] px-4 py-2.5 text-sm font-semibold text-[#0B3D2E]">Client messages</Link>
+            </div>
           </div>
 
           {clientLoadError && (
@@ -698,14 +704,12 @@ export default function TrainerDashboard() {
                   );
                 })}
               </div>
-              <div className="flex flex-col items-center rounded-2xl border border-dashed border-[#14201A]/15 bg-[#FCFAF6] px-6 py-10 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F2F7D9] text-[#0B3D2E]">
-                  <Calendar className="h-6 w-6" />
+              <div className="flex flex-col items-start gap-3 rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="font-serif text-xl text-[#14201A]">Class calendar & rosters</h3>
+                  <p className="mt-1 text-sm text-[#5A6660]">View your recurring classes, upcoming member lists, and record attendance.</p>
                 </div>
-                <h3 className="mt-4 font-serif text-2xl text-[#14201A]">Session calendar</h3>
-                <p className="mt-2 max-w-md text-sm leading-6 text-[#5A6660]">
-                  A day-by-day calendar is not available yet. These totals are based on the weekly session commitments in your active client assignments.
-                </p>
+                <Link href="/trainer/schedule" className="shrink-0 rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9]">Open schedule</Link>
               </div>
             </section>
           )}

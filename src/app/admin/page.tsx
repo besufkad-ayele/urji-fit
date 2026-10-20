@@ -192,6 +192,7 @@ export default function AdminDashboardPage() {
   };
 
   const handleLogout = () => {
+    void fetch('/api/auth/logout', { method: 'POST' });
     localStorage.removeItem('urji_user');
     localStorage.removeItem('urji_user_id');
     router.push('/login');

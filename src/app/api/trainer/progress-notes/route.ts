@@ -1,20 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 // GET /api/trainer/progress-notes - Get progress notes for a client
 export async function GET(req: NextRequest) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
+    const user = await getAuthenticatedUser(req);
+    if (!user || user.role !== 'trainer') {
+      return NextResponse.json({ error: 'A trainer session is required.' }, { status: 403 });
+    }
     const { searchParams } = new URL(req.url);
     const clientId = searchParams.get('clientId');
     const trainerId = searchParams.get('trainerId');
 
-    if (!clientId || !trainerId) {
+    if (!clientId || trainerId !== user.id) {
       return NextResponse.json(
-        { error: 'Client ID and trainer ID are required' },
-        { status: 400 }
+        { error: 'You can only view notes for a client assigned to your trainer account.' },
+        { status: 403 }
       );
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: assignment, error: assignmentError } = await supabaseAdmin
+      .from('trainer_assignments')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('trainer_id', user.id)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+    if (assignmentError) {
+      return NextResponse.json({ error: `Could not verify client assignment: ${assignmentError.message}` }, { status: 500 });
+    }
+    if (!assignment) return NextResponse.json({ error: 'This client is not assigned to you.' }, { status: 403 });
 
     const { data: notes, error } = await supabaseAdmin
       .from('progress_notes')
@@ -40,8 +58,15 @@ export async function GET(req: NextRequest) {
 
 // POST /api/trainer/progress-notes - Create progress note
 export async function POST(req: NextRequest) {
+  if (req.headers.get('origin') !== req.nextUrl.origin) {
+    return NextResponse.json({ error: 'Cross-origin progress notes are not allowed.' }, { status: 403 });
+  }
+
   try {
-    const supabaseAdmin = getSupabaseAdmin();
+    const user = await getAuthenticatedUser(req);
+    if (!user || user.role !== 'trainer') {
+      return NextResponse.json({ error: 'A trainer session is required.' }, { status: 403 });
+    }
     const body = await req.json();
     const {
       trainer_id,
@@ -54,12 +79,33 @@ export async function POST(req: NextRequest) {
       is_private = false,
     } = body;
 
-    if (!trainer_id || !client_id || !content) {
+    if (trainer_id !== user.id || !client_id || typeof content !== 'string' || !content.trim()) {
       return NextResponse.json(
-        { error: 'Trainer ID, client ID, and content are required' },
-        { status: 400 }
+        { error: 'You can only write a non-empty progress note as your own trainer account.' },
+        { status: 403 }
       );
     }
+    if (content.length > 5000) {
+      return NextResponse.json({ error: 'Progress notes must be 5,000 characters or fewer.' }, { status: 400 });
+    }
+    const validNoteTypes = ['assessment', 'progress', 'injury', 'goal_update', 'general'];
+    if (note_type !== null && note_type !== undefined && !validNoteTypes.includes(note_type)) {
+      return NextResponse.json({ error: 'Choose a valid progress note type.' }, { status: 400 });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    let assignmentQuery = supabaseAdmin
+      .from('trainer_assignments')
+      .select('id')
+      .eq('client_id', client_id)
+      .eq('trainer_id', user.id)
+      .eq('status', 'active');
+    if (gym_id) assignmentQuery = assignmentQuery.eq('gym_id', gym_id);
+    const { data: assignment, error: assignmentError } = await assignmentQuery.limit(1).maybeSingle();
+    if (assignmentError) {
+      return NextResponse.json({ error: `Could not verify client assignment: ${assignmentError.message}` }, { status: 500 });
+    }
+    if (!assignment) return NextResponse.json({ error: 'This client is not assigned to you.' }, { status: 403 });
 
     const { data: note, error } = await supabaseAdmin
       .from('progress_notes')
@@ -69,7 +115,7 @@ export async function POST(req: NextRequest) {
         gym_id,
         note_date: new Date().toISOString().split('T')[0],
         note_type,
-        content,
+        content: content.trim(),
         measurements,
         photos,
         is_private,

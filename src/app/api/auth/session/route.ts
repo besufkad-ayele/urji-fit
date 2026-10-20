@@ -1,49 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
-  const supabaseAdmin = getSupabaseAdmin();
-  const { searchParams } = new URL(req.url);
-  const userId = searchParams.get('userId');
-  const deviceId = searchParams.get('deviceId');
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json(
+        { active: false, message: 'Your session is no longer active. Please sign in again.' },
+        { status: 401 }
+      );
+    }
 
-  if (!userId || !deviceId) {
-    return NextResponse.json({ active: false, error: 'Missing parameters' }, { status: 400 });
+    const { error } = await getSupabaseAdmin()
+      .from('users')
+      .update({ last_active_at: new Date().toISOString() })
+      .eq('id', user.id);
+    if (error) throw new Error(`Failed to update session activity: ${error.message}`);
+
+    return NextResponse.json({ active: true, user });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to validate session.';
+    return NextResponse.json({ active: false, error: message }, { status: 500 });
   }
-
-  const { data: user, error } = await supabaseAdmin
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (error || !user) {
-    return NextResponse.json({ active: false, error: 'User not found' }, { status: 404 });
-  }
-
-  // Check single-device enforcement
-  if (!user.current_device_id) {
-    return NextResponse.json({
-      active: false,
-      reason: 'revoked',
-      message: 'Active device lock has been revoked by the administrator. Please log in again to bind your device.',
-    }, { status: 401 });
-  }
-
-  if (user.current_device_id !== deviceId) {
-    return NextResponse.json({
-      active: false,
-      reason: 'superseded',
-      message: 'Your account was logged in from another device. You have been logged out on this device.',
-    }, { status: 401 });
-  }
-
-
-  // Update heartbeat
-  await supabaseAdmin
-    .from('users')
-    .update({ last_active_at: new Date().toISOString() })
-    .eq('id', userId);
-
-  return NextResponse.json({ active: true, user });
 }

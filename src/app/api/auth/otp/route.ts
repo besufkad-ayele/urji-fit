@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { assertSessionConfiguration, setSessionCookie } from '@/lib/session';
 
 const DEMO_ACCOUNTS = {
   'bes@urjifit.com': {
@@ -22,6 +23,7 @@ const DEMO_ACCOUNTS = {
 
 export async function POST(req: NextRequest) {
   try {
+    assertSessionConfiguration();
     const supabaseAdmin = getSupabaseAdmin();
     const { credential, otp, deviceId, deviceName } = await req.json();
 
@@ -55,6 +57,12 @@ export async function POST(req: NextRequest) {
     const demoAccount = Object.entries(DEMO_ACCOUNTS).find(
       ([email]) => normalizedEmail === email
     )?.[1];
+    if (process.env.NODE_ENV === 'production' && demoAccount) {
+      return NextResponse.json(
+        { error: 'Demo accounts cannot be used in production. Ask your administrator for an account.' },
+        { status: 401 }
+      );
+    }
     const isDemoLogin = Boolean(demoAccount && cleanOtp === demoAccount.otp);
 
     let validOtpId: string | null = null;
@@ -82,14 +90,23 @@ export async function POST(req: NextRequest) {
 
     // 3. Mark OTP as consumed (for non-demo users)
     if (validOtpId && !isDemoLogin) {
-      await supabaseAdmin
+      const { data: consumedOtp, error: consumeError } = await supabaseAdmin
         .from('otps')
         .update({
           is_consumed: true,
           consumed_at: new Date().toISOString(),
           device_id: deviceId,
         })
-        .eq('id', validOtpId);
+        .eq('id', validOtpId)
+        .eq('is_consumed', false)
+        .select('id')
+        .maybeSingle();
+      if (consumeError) {
+        return NextResponse.json({ error: 'Could not safely consume the one-time code.' }, { status: 500 });
+      }
+      if (!consumedOtp) {
+        return NextResponse.json({ error: 'This one-time code has already been used. Request a new code.' }, { status: 409 });
+      }
     }
 
     // 4. Bind device to user (Single device lock: replaces previous device)
@@ -113,11 +130,13 @@ export async function POST(req: NextRequest) {
 
     console.log('[AUTH API] Login successful for user:', updatedUser.email, 'Role:', updatedUser.role);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user: updatedUser,
       message: 'Authentication successful. Device bound.',
     });
+    setSessionCookie(response, updatedUser.id, deviceId);
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';
     return NextResponse.json({ error: message }, { status: 500 });

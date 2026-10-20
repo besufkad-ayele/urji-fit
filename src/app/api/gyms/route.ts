@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { canConfigureGymPayments, getAuthenticatedUser } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabase';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 // GET /api/gyms - Get all gyms (admin) or user's gym (gym_owner)
 export async function GET(req: NextRequest) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-    const role = searchParams.get('role');
-
-    if (!userId || !role) {
-      return NextResponse.json({ error: 'User ID and role required' }, { status: 400 });
+    const user = await getAuthenticatedUser(req);
+    if (!user) return NextResponse.json({ error: 'Sign in to view gyms.' }, { status: 401 });
+    if (!['gym_owner', 'admin', 'platform_admin'].includes(user.role)) {
+      return NextResponse.json({ error: 'You are not authorized to view gym management data.' }, { status: 403 });
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     let query = supabaseAdmin
       .from('gyms')
       .select(`
@@ -23,8 +26,8 @@ export async function GET(req: NextRequest) {
       `);
 
     // Gym owners only see their own gyms
-    if (role === 'gym_owner') {
-      query = query.eq('owner_id', userId);
+    if (user.role === 'gym_owner') {
+      query = query.eq('owner_id', user.id);
     }
 
     const { data: gyms, error } = await query.order('created_at', { ascending: false });
@@ -42,7 +45,15 @@ export async function GET(req: NextRequest) {
 
 // POST /api/gyms - Create new gym
 export async function POST(req: NextRequest) {
+  if (req.headers.get('origin') !== req.nextUrl.origin) {
+    return NextResponse.json({ error: 'Cross-origin gym creation is not allowed.' }, { status: 403 });
+  }
+
   try {
+    const user = await getAuthenticatedUser(req);
+    if (!user || !['admin', 'platform_admin'].includes(user.role)) {
+      return NextResponse.json({ error: 'An administrator session is required to create a gym.' }, { status: 403 });
+    }
     const supabaseAdmin = getSupabaseAdmin();
     const body = await req.json();
     const {
@@ -100,15 +111,47 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/gyms - Update gym
 export async function PATCH(req: NextRequest) {
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const body = await req.json();
-    const { gymId, ...updates } = body;
+  if (req.headers.get('origin') !== req.nextUrl.origin) {
+    return NextResponse.json({ error: 'Cross-origin gym updates are not allowed.' }, { status: 403 });
+  }
 
-    if (!gymId) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return NextResponse.json({ error: 'Sign in to update gym settings.' }, { status: 401 });
+    const body: unknown = await req.json();
+    if (!isRecord(body) || !('gymId' in body)) {
       return NextResponse.json({ error: 'Gym ID is required' }, { status: 400 });
     }
+    const gymId = body.gymId;
+    if (typeof gymId !== 'string' || !(await canConfigureGymPayments(user, gymId))) {
+      return NextResponse.json({ error: 'You are not authorized to update this gym.' }, { status: 403 });
+    }
 
+    const editableFields = [
+      'name',
+      'address',
+      'city',
+      'state',
+      'zip_code',
+      'country',
+      'phone',
+      'email',
+      'website',
+      'logo_url',
+      'description',
+      'operating_hours',
+      'amenities',
+      'capacity',
+    ] as const;
+    const updates: Record<string, unknown> = {};
+    for (const field of editableFields) {
+      if (field in body) updates[field] = body[field];
+    }
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No editable gym fields were provided.' }, { status: 400 });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: gym, error } = await supabaseAdmin
       .from('gyms')
       .update({ ...updates, updated_at: new Date().toISOString() })

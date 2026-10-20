@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { canConfigureGymPayments, getAuthenticatedUser } from '@/lib/session';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 // GET /api/analytics/gym-stats - Get gym statistics
 export async function GET(req: NextRequest) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
+    const user = await getAuthenticatedUser(req);
+    if (!user) return NextResponse.json({ error: 'Sign in to view gym reports.' }, { status: 401 });
     const { searchParams } = new URL(req.url);
     const gymId = searchParams.get('gymId');
 
     if (!gymId) {
       return NextResponse.json({ error: 'Gym ID is required' }, { status: 400 });
     }
+    if (!(await canConfigureGymPayments(user, gymId))) {
+      return NextResponse.json({ error: 'You are not authorized to view this gym report.' }, { status: 403 });
+    }
 
+    const supabaseAdmin = getSupabaseAdmin();
     // Get total members
     const { count: totalMembers } = await supabaseAdmin
       .from('gym_memberships')

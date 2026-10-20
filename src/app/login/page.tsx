@@ -220,30 +220,34 @@ export default function LoginPage() {
           </span>
         </div>
 
-        {/* Quick Demo Pre-seeds */}
-        <div className="mt-6 pt-5 border-t border-[#14201A]/10 text-center">
-          <p className="text-[11px] uppercase tracking-wider text-[rgb(90,102,96)] font-semibold mb-2 flex items-center justify-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-[#C1502E]" /> Quick Demo Logins
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {DEMO_LOGINS.map((demoLogin) => {
-              const Icon = demoLogin.icon;
+        {process.env.NODE_ENV !== 'production' && (
+          <>
+            {/* Quick Demo Pre-seeds */}
+            <div className="mt-6 pt-5 border-t border-[#14201A]/10 text-center">
+              <p className="text-[11px] uppercase tracking-wider text-[rgb(90,102,96)] font-semibold mb-2 flex items-center justify-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#C1502E]" /> Quick Demo Logins
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {DEMO_LOGINS.map((demoLogin) => {
+                  const Icon = demoLogin.icon;
 
-              return (
-                <button
-                  key={demoLogin.label}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleQuickDemo(demoLogin)}
-                  className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 disabled:opacity-50 border border-[#14201A]/10 rounded-lg text-[#14201A] transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Icon className={`w-3.5 h-3.5 ${demoLogin.colorClass}`} />
-                  {demoLogin.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                  return (
+                    <button
+                      key={demoLogin.label}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleQuickDemo(demoLogin)}
+                      className="px-3 py-2 text-xs font-medium bg-white hover:bg-[#F2F7D9]/70 disabled:opacity-50 border border-[#14201A]/10 rounded-lg text-[#14201A] transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${demoLogin.colorClass}`} />
+                      {demoLogin.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

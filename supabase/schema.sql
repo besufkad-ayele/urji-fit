@@ -213,6 +213,12 @@ CREATE TABLE IF NOT EXISTS public.gyms (
   description TEXT,
   operating_hours JSONB, -- e.g., {"monday": "06:00-22:00", "tuesday": "06:00-22:00"}
   amenities TEXT[], -- ["parking", "showers", "lockers", "wifi", "cafe"]
+  bank_name TEXT,
+  bank_account_name TEXT,
+  bank_account_number TEXT,
+  mobile_money_provider TEXT,
+  mobile_money_account TEXT,
+  payment_instructions TEXT,
   capacity INT DEFAULT 100,
   monthly_revenue NUMERIC(10, 2) DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
@@ -235,6 +241,12 @@ ALTER TABLE public.gyms
   ADD COLUMN IF NOT EXISTS description TEXT,
   ADD COLUMN IF NOT EXISTS operating_hours JSONB,
   ADD COLUMN IF NOT EXISTS amenities TEXT[],
+  ADD COLUMN IF NOT EXISTS bank_name TEXT,
+  ADD COLUMN IF NOT EXISTS bank_account_name TEXT,
+  ADD COLUMN IF NOT EXISTS bank_account_number TEXT,
+  ADD COLUMN IF NOT EXISTS mobile_money_provider TEXT,
+  ADD COLUMN IF NOT EXISTS mobile_money_account TEXT,
+  ADD COLUMN IF NOT EXISTS payment_instructions TEXT,
   ADD COLUMN IF NOT EXISTS capacity INT DEFAULT 100,
   ADD COLUMN IF NOT EXISTS monthly_revenue NUMERIC(10, 2) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
@@ -268,19 +280,164 @@ CREATE TABLE IF NOT EXISTS public.gym_staff (
 );
 
 -- 15. Gym Memberships
+CREATE TABLE IF NOT EXISTS public.gym_membership_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  membership_type TEXT NOT NULL CHECK (
+    membership_type IN ('monthly', 'quarterly', 'annual', 'day_pass', 'family', 'corporate', 'student', 'couple', 'pay_per_visit', 'class_pack')
+  ),
+  price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+  duration_days INT,
+  sessions_included INT,
+  description TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (gym_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS public.gym_memberships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
   member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  membership_type TEXT NOT NULL CHECK (membership_type IN ('monthly', 'quarterly', 'annual', 'day_pass', 'class_pack')),
+  membership_type TEXT NOT NULL CHECK (
+    membership_type IN (
+      'monthly', 'quarterly', 'annual', 'day_pass', 'family', 'corporate',
+      'student', 'couple', 'pay_per_visit', 'class_pack'
+    )
+  ),
   price NUMERIC(8, 2) NOT NULL,
   start_date DATE NOT NULL DEFAULT CURRENT_DATE,
   end_date DATE,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'suspended', 'canceled')),
-  auto_renew BOOLEAN DEFAULT true,
+  auto_renew BOOLEAN NOT NULL DEFAULT false,
   sessions_remaining INT, -- for class packs
+  plan_id UUID REFERENCES public.gym_membership_plans(id) ON DELETE SET NULL,
+  frozen_at TIMESTAMPTZ,
+  pending_plan_id UUID REFERENCES public.gym_membership_plans(id) ON DELETE SET NULL,
+  household_id UUID,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.membership_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  membership_id UUID REFERENCES public.gym_memberships(id) ON DELETE SET NULL,
+  actor_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+  action TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.gym_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  actor_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id UUID,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gym_audit_logs_timeline
+  ON public.gym_audit_logs(gym_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gym_audit_logs_target
+  ON public.gym_audit_logs(target_type, target_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.gym_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT,
+  source TEXT,
+  status TEXT NOT NULL DEFAULT 'inquiry' CHECK (status IN ('inquiry', 'trial', 'converted', 'lost')),
+  trial_at TIMESTAMPTZ,
+  notes TEXT,
+  assigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  converted_member_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  converted_membership_id UUID REFERENCES public.gym_memberships(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (phone IS NOT NULL OR email IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS public.member_profiles (
+  member_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  emergency_contact_name TEXT,
+  emergency_contact_phone TEXT,
+  medical_notes TEXT,
+  goals TEXT,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  date_of_birth DATE,
+  address TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.gym_households (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  primary_member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+  created_by UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (gym_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS public.gym_household_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  household_id UUID NOT NULL,
+  member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  relationship TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (gym_id, member_id),
+  UNIQUE (household_id, member_id),
+  FOREIGN KEY (gym_id, household_id)
+    REFERENCES public.gym_households(gym_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE public.gym_memberships
+  DROP CONSTRAINT IF EXISTS gym_memberships_household_id_fkey;
+ALTER TABLE public.gym_memberships
+  ADD CONSTRAINT gym_memberships_household_id_fkey
+  FOREIGN KEY (gym_id, household_id)
+  REFERENCES public.gym_households(gym_id, id)
+  ON DELETE RESTRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gym_households_active_primary
+  ON public.gym_households(gym_id, primary_member_id)
+  WHERE is_active = true;
+
+CREATE TABLE IF NOT EXISTS public.gym_waivers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gym_id UUID NOT NULL REFERENCES public.gyms(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  version INT NOT NULL DEFAULT 1,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_by UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (gym_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS public.gym_waiver_acceptances (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  waiver_id UUID NOT NULL REFERENCES public.gym_waivers(id) ON DELETE RESTRICT,
+  member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  typed_signature TEXT NOT NULL,
+  waiver_title TEXT,
+  waiver_version INT,
+  content_snapshot TEXT,
+  content_sha256 CHAR(64),
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip_address INET,
+  UNIQUE (waiver_id, member_id)
 );
 
 ALTER TABLE public.gym_memberships
@@ -381,7 +538,7 @@ CREATE TABLE IF NOT EXISTS public.class_bookings (
   class_id UUID NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
   member_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   booking_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'attended', 'no_show', 'canceled')),
+  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'waitlisted', 'attended', 'no_show', 'canceled')),
   checked_in_at TIMESTAMPTZ,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -413,8 +570,26 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
   status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
   payment_date TIMESTAMPTZ DEFAULT now(),
   notes TEXT,
+  currency CHAR(3) NOT NULL DEFAULT 'ETB',
+  reference_number TEXT,
+  receipt_path TEXT,
+  reviewed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  rejection_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.payment_transactions
+  ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'ETB',
+  ADD COLUMN IF NOT EXISTS reference_number TEXT,
+  ADD COLUMN IF NOT EXISTS receipt_path TEXT,
+  ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_transactions_gym_reference
+  ON public.payment_transactions(gym_id, reference_number)
+  WHERE reference_number IS NOT NULL;
 
 -- 21. Gym Equipment Inventory
 CREATE TABLE IF NOT EXISTS public.gym_equipment (
@@ -466,6 +641,15 @@ ALTER TABLE public.water_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.body_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gyms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_membership_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.membership_audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.member_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_waivers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_waiver_acceptances ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_households ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_household_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gym_staff ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gym_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trainer_assignments ENABLE ROW LEVEL SECURITY;
@@ -483,9 +667,7 @@ CREATE POLICY "Allow public read of templates" ON public.workout_templates FOR S
 DROP POLICY IF EXISTS "Allow public read of exercises" ON public.workout_exercises;
 CREATE POLICY "Allow public read of exercises" ON public.workout_exercises FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Allow all actions on users" ON public.users;
-CREATE POLICY "Allow all actions on users" ON public.users FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on otps" ON public.otps;
-CREATE POLICY "Allow all actions on otps" ON public.otps FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on workout_templates" ON public.workout_templates;
 CREATE POLICY "Allow all actions on workout_templates" ON public.workout_templates FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on workout_exercises" ON public.workout_exercises;
@@ -507,25 +689,15 @@ CREATE POLICY "Allow all actions on sleep_logs" ON public.sleep_logs FOR ALL USI
 DROP POLICY IF EXISTS "Allow all actions on body_metrics" ON public.body_metrics;
 CREATE POLICY "Allow all actions on body_metrics" ON public.body_metrics FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on gyms" ON public.gyms;
-CREATE POLICY "Allow all actions on gyms" ON public.gyms FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on gym_staff" ON public.gym_staff;
-CREATE POLICY "Allow all actions on gym_staff" ON public.gym_staff FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on gym_memberships" ON public.gym_memberships;
-CREATE POLICY "Allow all actions on gym_memberships" ON public.gym_memberships FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on trainer_assignments" ON public.trainer_assignments;
-CREATE POLICY "Allow all actions on trainer_assignments" ON public.trainer_assignments FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on classes" ON public.classes;
-CREATE POLICY "Allow all actions on classes" ON public.classes FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on class_bookings" ON public.class_bookings;
-CREATE POLICY "Allow all actions on class_bookings" ON public.class_bookings FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on attendance_logs" ON public.attendance_logs;
-CREATE POLICY "Allow all actions on attendance_logs" ON public.attendance_logs FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on payment_transactions" ON public.payment_transactions;
-CREATE POLICY "Allow all actions on payment_transactions" ON public.payment_transactions FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on gym_equipment" ON public.gym_equipment;
-CREATE POLICY "Allow all actions on gym_equipment" ON public.gym_equipment FOR ALL USING (true);
 DROP POLICY IF EXISTS "Allow all actions on progress_notes" ON public.progress_notes;
-CREATE POLICY "Allow all actions on progress_notes" ON public.progress_notes FOR ALL USING (true);
 
 -- Indices for performance
 CREATE INDEX IF NOT EXISTS idx_users_phone ON public.users(phone);

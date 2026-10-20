@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
   BarChart3,
+  BriefcaseBusiness,
   Building2,
   CalendarDays,
   ClipboardList,
@@ -12,7 +14,10 @@ import {
   Dumbbell,
   LayoutDashboard,
   LogOut,
+  Pencil,
+  Plus,
   TrendingUp,
+  UserCheck,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -22,6 +27,21 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { Class, Gym, GymMembership, GymStaff, User } from '@/types';
 
 type GymOwnerUser = Pick<User, 'id' | 'full_name'> & { role: 'gym_owner' };
+type StaffAccount = { id: string; full_name: string; email: string | null; phone: string | null };
+type AttendanceRecord = {
+  id: string;
+  member_id: string;
+  check_in_at: string;
+  check_out_at: string | null;
+  attendance_type: 'open_gym' | 'class' | 'personal_training';
+  member?: { id: string; full_name: string };
+};
+
+async function readApiResponse<T>(response: Response): Promise<T> {
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed.');
+  return data as T;
+}
 
 function isGymOwnerUser(value: unknown): value is GymOwnerUser {
   return (
@@ -50,6 +70,7 @@ const DASHBOARD_SECTIONS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'members', label: 'Members', icon: Users },
   { id: 'staff', label: 'Staff & trainers', icon: Dumbbell },
   { id: 'classes', label: 'Classes', icon: CalendarDays },
+  { id: 'attendance', label: 'Attendance', icon: UserCheck },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
@@ -62,10 +83,20 @@ export default function GymOwnerDashboard() {
   const [members, setMembers] = useState<GymMembership[]>([]);
   const [staff, setStaff] = useState<GymStaff[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshingGymData, setIsRefreshingGymData] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [gymLoadError, setGymLoadError] = useState('');
   const [gymReload, setGymReload] = useState(0);
+  const [managementError, setManagementError] = useState('');
+  const [managementNotice, setManagementNotice] = useState('');
+  const [staffLookup, setStaffLookup] = useState<StaffAccount | null>(null);
+  const [staffPosition, setStaffPosition] = useState('trainer');
+  const [editingStaff, setEditingStaff] = useState<GymStaff | null>(null);
+  const [editingClass, setEditingClass] = useState<Class | null>(null);
+  const [showClassForm, setShowClassForm] = useState(false);
+  const [attendanceMemberId, setAttendanceMemberId] = useState('');
 
   // Check authentication and role
   useEffect(() => {
@@ -106,7 +137,7 @@ export default function GymOwnerDashboard() {
 
         setGyms(data.gyms);
         setSelectedGym((currentGym) => currentGym ?? data.gyms[0] ?? null);
-        if (data.gyms.length === 0) setLoading(false);
+        setLoading(false);
       } catch (error) {
         if (!isCurrentRequest) return;
         console.error('Failed to fetch gyms:', error);
@@ -138,10 +169,11 @@ export default function GymOwnerDashboard() {
   const fetchMembers = useCallback(async (gymId: string) => {
     try {
       const res = await fetch(`/api/gyms/${gymId}/members`);
-      const data = await res.json();
-      if (res.ok && data.memberships) {
-        setMembers(data.memberships);
-      }
+      const data = await readApiResponse<{ memberships: GymMembership[] }>(res);
+      setMembers(data.memberships);
+      setAttendanceMemberId((current) =>
+        current || data.memberships.find((membership) => membership.status === 'active')?.member_id || data.memberships[0]?.member_id || ''
+      );
     } catch (error) {
       console.error('Failed to fetch members:', error);
     }
@@ -173,6 +205,20 @@ export default function GymOwnerDashboard() {
     }
   }, []);
 
+  const fetchAttendance = useCallback(async (gymId: string) => {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const res = await fetch(
+        `/api/attendance?gymId=${encodeURIComponent(gymId)}&startDate=${today}T00:00:00&endDate=${today}T23:59:59`
+      );
+      const data = await readApiResponse<{ attendance: AttendanceRecord[] }>(res);
+      setAttendance(data.attendance);
+    } catch (error) {
+      console.error('Failed to fetch attendance:', error);
+      setManagementError(error instanceof Error ? error.message : 'Could not load attendance.');
+    }
+  }, []);
+
   // Load all data when gym is selected
   useEffect(() => {
     if (selectedGym) {
@@ -183,11 +229,172 @@ export default function GymOwnerDashboard() {
         fetchMembers(selectedGym.id),
         fetchStaff(selectedGym.id),
         fetchClasses(selectedGym.id),
-      ]).finally(() => setLoading(false));
+        fetchAttendance(selectedGym.id),
+      ]).finally(() => setIsRefreshingGymData(false));
     }
-  }, [selectedGym, fetchStats, fetchMembers, fetchStaff, fetchClasses]);
+  }, [selectedGym, fetchStats, fetchMembers, fetchStaff, fetchClasses, fetchAttendance]);
+
+  async function lookupStaffAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedGym) return;
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get('email') || '').trim();
+    const phone = String(form.get('phone') || '').trim();
+    setManagementError('');
+    setManagementNotice('');
+    setStaffLookup(null);
+    try {
+      const response = await fetch(`/api/gyms/${selectedGym.id}/staff/lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(email ? { email } : { phone }), position: staffPosition }),
+      });
+      const data = await readApiResponse<{ account: StaffAccount }>(response);
+      setStaffLookup(data.account);
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : 'Could not find that staff account.');
+    }
+  }
+
+  async function addStaffMember(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedGym || !staffLookup) return;
+    const form = new FormData(event.currentTarget);
+    setManagementError('');
+    setManagementNotice('');
+    try {
+      await readApiResponse(await fetch(`/api/gyms/${selectedGym.id}/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: staffLookup.id,
+          position: staffPosition,
+          hire_date: form.get('hire_date'),
+          hourly_rate: form.get('hourly_rate') ? Number(form.get('hourly_rate')) : null,
+          salary: form.get('salary') ? Number(form.get('salary')) : null,
+          commission_rate: form.get('commission_rate') ? Number(form.get('commission_rate')) : null,
+        }),
+      }));
+      setManagementNotice(`${staffLookup.full_name} was added to the gym team.`);
+      setStaffLookup(null);
+      await fetchStaff(selectedGym.id);
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : 'Could not add staff member.');
+    }
+  }
+
+  async function updateStaffMember(event: React.FormEvent<HTMLFormElement>, member: GymStaff) {
+    event.preventDefault();
+    if (!selectedGym) return;
+    const form = new FormData(event.currentTarget);
+    setManagementError('');
+    setManagementNotice('');
+    try {
+      await readApiResponse(await fetch(`/api/gyms/${selectedGym.id}/staff`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId: member.id,
+          position: form.get('position'),
+          hire_date: form.get('hire_date'),
+          hourly_rate: form.get('hourly_rate') ? Number(form.get('hourly_rate')) : null,
+          salary: form.get('salary') ? Number(form.get('salary')) : null,
+          commission_rate: form.get('commission_rate') ? Number(form.get('commission_rate')) : null,
+          status: form.get('status'),
+          notes: form.get('notes') || null,
+        }),
+      }));
+      setManagementNotice('Staff assignment updated.');
+      setEditingStaff(null);
+      await fetchStaff(selectedGym.id);
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : 'Could not update staff assignment.');
+    }
+  }
+
+  async function saveClass(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedGym) return;
+    const form = new FormData(event.currentTarget);
+    const classId = editingClass?.id;
+    setManagementError('');
+    setManagementNotice('');
+    try {
+      await readApiResponse(await fetch(`/api/gyms/${selectedGym.id}/classes`, {
+        method: classId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(classId ? { classId } : {}),
+          name: form.get('name'),
+          description: form.get('description') || null,
+          class_type: form.get('class_type'),
+          trainer_id: form.get('trainer_id') || null,
+          day_of_week: Number(form.get('day_of_week')),
+          start_time: form.get('start_time'),
+          duration_minutes: Number(form.get('duration_minutes')),
+          capacity: Number(form.get('capacity')),
+          price: Number(form.get('price')),
+          difficulty_level: form.get('difficulty_level') || null,
+        }),
+      }));
+      setManagementNotice(classId ? 'Class schedule updated.' : 'Class added to the schedule.');
+      setEditingClass(null);
+      setShowClassForm(false);
+      await fetchClasses(selectedGym.id);
+      await fetchStats(selectedGym.id);
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : 'Could not save class.');
+    }
+  }
+
+  async function changeClassStatus(classItem: Class, status: 'active' | 'canceled') {
+    if (!selectedGym) return;
+    const action = status === 'canceled' ? 'deactivate' : 'reactivate';
+    if (!window.confirm(`${action === 'deactivate' ? 'Deactivate' : 'Reactivate'} ${classItem.name}?`)) return;
+    setManagementError('');
+    setManagementNotice('');
+    try {
+      await readApiResponse(await fetch(`/api/gyms/${selectedGym.id}/classes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId: classItem.id, status }),
+      }));
+      setManagementNotice(`Class ${status === 'canceled' ? 'deactivated' : 'reactivated'}.`);
+      await fetchClasses(selectedGym.id);
+      await fetchStats(selectedGym.id);
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : 'Could not update class status.');
+    }
+  }
+
+  async function takeAttendance(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedGym || !attendanceMemberId) return;
+    const activeCheckIn = attendance.find((record) => record.member_id === attendanceMemberId && !record.check_out_at);
+    setManagementError('');
+    setManagementNotice('');
+    try {
+      const response = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gym_id: selectedGym.id,
+          member_id: attendanceMemberId,
+          attendance_type: 'open_gym',
+          action: activeCheckIn ? 'check_out' : 'check_in',
+        }),
+      });
+      await readApiResponse(response);
+      setManagementNotice(activeCheckIn ? 'Member checked out.' : 'Member checked in.');
+      await fetchAttendance(selectedGym.id);
+      await fetchStats(selectedGym.id);
+    } catch (error) {
+      setManagementError(error instanceof Error ? error.message : 'Could not record attendance.');
+    }
+  }
 
   const handleLogout = () => {
+    void fetch('/api/auth/logout', { method: 'POST' });
     localStorage.removeItem('urji_user');
     localStorage.removeItem('urji_user_id');
     router.replace('/login');
@@ -338,6 +545,19 @@ export default function GymOwnerDashboard() {
         </span>
       ),
     },
+    {
+      key: 'actions',
+      label: 'Actions',
+      render: (item: GymStaff) => (
+        <button
+          type="button"
+          onClick={() => setEditingStaff(editingStaff?.id === item.id ? null : item)}
+          className="inline-flex items-center gap-1 rounded-lg border border-[#14201A]/15 px-2.5 py-1.5 text-xs font-semibold text-[#0B3D2E] hover:bg-[#F2F7D9]"
+        >
+          <Pencil className="h-3 w-3" /> Edit
+        </button>
+      ),
+    },
   ];
 
   const classColumns = [
@@ -374,6 +594,31 @@ export default function GymOwnerDashboard() {
       label: 'Price',
       render: (item: Class) => (item.price > 0 ? `ETB ${item.price}` : 'Included'),
     },
+    {
+      key: 'actions',
+      label: 'Actions',
+      render: (item: Class) => (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEditingClass(item);
+              setShowClassForm(true);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-[#14201A]/15 px-2.5 py-1.5 text-xs font-semibold text-[#0B3D2E] hover:bg-[#F2F7D9]"
+          >
+            <Pencil className="h-3 w-3" /> Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => void changeClassStatus(item, item.status === 'canceled' ? 'active' : 'canceled')}
+            className="rounded-lg border border-[#14201A]/15 px-2.5 py-1.5 text-xs font-semibold text-[#5A6660] hover:bg-[#F3EFE5]"
+          >
+            {item.status === 'canceled' ? 'Reactivate' : 'Deactivate'}
+          </button>
+        </div>
+      ),
+    },
   ];
 
   const currentSection = DASHBOARD_SECTIONS.find((section) => section.id === activeTab);
@@ -382,6 +627,7 @@ export default function GymOwnerDashboard() {
     members: 'Review memberships, renewal dates, and the people in your community.',
     staff: 'Keep track of your trainers and the people who keep your gym running.',
     classes: 'See the weekly class schedule, trainers, and available capacity.',
+    attendance: 'Check members in and out, and review today’s visit log.',
     analytics: 'A clear snapshot of activity and revenue for this location.',
   };
   const statCards: {
@@ -508,6 +754,20 @@ export default function GymOwnerDashboard() {
         </div>
 
         <div className="mt-auto space-y-4 border-t border-[#14201A]/10 pt-5">
+          <Link
+            href="/gym-owner/operations?tab=members"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#0B3D2E] transition-colors hover:bg-[#F2F7D9]/70"
+          >
+            <BriefcaseBusiness className="h-4 w-4" />
+            Memberships & leads
+          </Link>
+          <Link
+            href="/gym-owner/payments"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#0B3D2E] transition-colors hover:bg-[#F2F7D9]/70"
+          >
+            <DollarSign className="h-4 w-4" />
+            Payments & receipts
+          </Link>
           <ThemeToggle variant="sidebar" />
           <div className="flex items-center gap-3 px-1">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F2F7D9] font-semibold text-[#0B3D2E]">
@@ -543,6 +803,13 @@ export default function GymOwnerDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <Link
+              href="/gym-owner/payments"
+              aria-label="Payments and receipts"
+              className="rounded-lg p-2 text-[#0B3D2E] transition-colors hover:bg-[#F2F7D9]"
+            >
+              <DollarSign className="h-4 w-4" />
+            </Link>
             <ThemeToggle variant="icon" />
             <button
               type="button"
@@ -568,6 +835,11 @@ export default function GymOwnerDashboard() {
               <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5A6660]">
                 {sectionDescriptions[activeTab]}
               </p>
+              {isRefreshingGymData && (
+                <p className="mt-2 text-xs text-[#5A6660]" role="status" aria-live="polite">
+                  Refreshing gym data…
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {gyms.length > 1 && (
@@ -578,11 +850,16 @@ export default function GymOwnerDashboard() {
                     onChange={(event) => {
                       const nextGym = gyms.find((gym) => gym.id === event.target.value);
                       if (nextGym) {
-                        setLoading(true);
+                        setIsRefreshingGymData(true);
                         setStats(null);
                         setMembers([]);
                         setStaff([]);
                         setClasses([]);
+                        setAttendance([]);
+                        setEditingStaff(null);
+                        setEditingClass(null);
+                        setManagementError('');
+                        setManagementNotice('');
                         setSelectedGym(nextGym);
                       }
                     }}
@@ -602,6 +879,19 @@ export default function GymOwnerDashboard() {
               </div>
             </div>
           </div>
+
+          {(managementError || managementNotice) && (
+            <div
+              role={managementError ? 'alert' : 'status'}
+              className={`mb-5 rounded-xl border px-4 py-3 text-sm ${
+                managementError
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              }`}
+            >
+              {managementError || managementNotice}
+            </div>
+          )}
 
           {activeTab === 'overview' && (
             <>
@@ -733,10 +1023,21 @@ export default function GymOwnerDashboard() {
                     Membership status and renewal information for this location.
                   </p>
                 </div>
-                <span className="rounded-full bg-[#F2F7D9] px-3 py-1.5 text-xs font-semibold text-[#0B3D2E]">
-                  {members.length} {members.length === 1 ? 'member' : 'members'}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href="/gym-owner/operations?tab=members"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#0B3D2E] px-3 py-2 text-xs font-semibold text-[#F2F7D9] hover:bg-[#135440]"
+                  >
+                    <Plus className="h-4 w-4" /> Enrollment & member records
+                  </Link>
+                  <span className="rounded-full bg-[#F2F7D9] px-3 py-1.5 text-xs font-semibold text-[#0B3D2E]">
+                    {members.length} {members.length === 1 ? 'member' : 'members'}
+                  </span>
+                </div>
               </div>
+              <p className="text-xs text-[#5A6660]">
+                Use Enrollment & member records to enroll an admin-created member account, edit contact and health notes, and freeze, renew, transfer, or cancel a membership.
+              </p>
               <DataTable
                 columns={memberColumns}
                 data={members}
@@ -759,12 +1060,128 @@ export default function GymOwnerDashboard() {
                   {staff.length} {staff.length === 1 ? 'team member' : 'team members'}
                 </span>
               </div>
+              <details className="rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5">
+                <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-[#0B3D2E]">
+                  <Plus className="h-4 w-4" /> Add trainer or staff account
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-[#5A6660]">
+                  Staff accounts must first be created by an administrator. Trainer positions require an existing trainer account.
+                </p>
+                <form onSubmit={lookupStaffAccount} className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-[#5A6660]">
+                    Gym position
+                    <select
+                      value={staffPosition}
+                      onChange={(event) => {
+                        setStaffPosition(event.target.value);
+                        setStaffLookup(null);
+                      }}
+                      className="mt-1 w-full rounded-xl border border-[#14201A]/15 bg-white px-3 py-2.5 text-sm text-[#14201A]"
+                    >
+                      <option value="trainer">Trainer</option>
+                      <option value="head_trainer">Head trainer</option>
+                      <option value="manager">Manager</option>
+                      <option value="receptionist">Receptionist</option>
+                      <option value="maintenance">Maintenance</option>
+                    </select>
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Account email
+                      <input name="email" type="email" placeholder="trainer@example.com" className="mt-1 w-full rounded-xl border border-[#14201A]/15 bg-white px-3 py-2.5 text-sm text-[#14201A]" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Or phone
+                      <input name="phone" type="tel" placeholder="+251..." className="mt-1 w-full rounded-xl border border-[#14201A]/15 bg-white px-3 py-2.5 text-sm text-[#14201A]" />
+                    </label>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button type="submit" className="rounded-xl border border-[#0B3D2E]/20 px-4 py-2.5 text-sm font-semibold text-[#0B3D2E] hover:bg-[#F2F7D9]">
+                      Find existing account
+                    </button>
+                  </div>
+                </form>
+                {staffLookup && (
+                  <form onSubmit={addStaffMember} className="mt-4 space-y-3 rounded-xl bg-[#F3EFE5] p-4">
+                    <p className="text-sm font-semibold text-[#14201A]">
+                      Assign {staffLookup.full_name} ({staffLookup.email || staffLookup.phone})
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <label className="text-xs font-semibold text-[#5A6660]">
+                        Hire date
+                        <input name="hire_date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                      </label>
+                      <label className="text-xs font-semibold text-[#5A6660]">
+                        Hourly rate (ETB)
+                        <input name="hourly_rate" type="number" min="0" step="0.01" className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                      </label>
+                      <label className="text-xs font-semibold text-[#5A6660]">
+                        Monthly salary (ETB)
+                        <input name="salary" type="number" min="0" step="0.01" className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                      </label>
+                      <label className="text-xs font-semibold text-[#5A6660]">
+                        Commission (%)
+                        <input name="commission_rate" type="number" min="0" max="99.99" step="0.01" className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                      </label>
+                    </div>
+                    <button type="submit" className="rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] hover:bg-[#135440]">
+                      Add to gym team
+                    </button>
+                  </form>
+                )}
+              </details>
               <DataTable
                 columns={staffColumns}
                 data={staff}
                 keyExtractor={(item) => item.id}
                 emptyMessage="No staff members have been added to this gym yet."
               />
+              {editingStaff && (
+                <form onSubmit={(event) => void updateStaffMember(event, editingStaff)} className="space-y-4 rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-[#14201A]">Edit {editingStaff.user?.full_name || 'staff assignment'}</h3>
+                      <p className="text-xs text-[#5A6660]">Terminating an assignment preserves the staff and commission history.</p>
+                    </div>
+                    <button type="button" onClick={() => setEditingStaff(null)} className="text-sm font-semibold text-[#5A6660]">Close</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Position
+                      <select name="position" defaultValue={editingStaff.position} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm">
+                        <option value="trainer">Trainer</option><option value="head_trainer">Head trainer</option><option value="manager">Manager</option><option value="receptionist">Receptionist</option><option value="maintenance">Maintenance</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Status
+                      <select name="status" defaultValue={editingStaff.status} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm">
+                        <option value="active">Active</option><option value="on_leave">On leave</option><option value="terminated">Terminated</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Hire date
+                      <input name="hire_date" type="date" defaultValue={editingStaff.hire_date} required className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Hourly rate (ETB)
+                      <input name="hourly_rate" type="number" min="0" step="0.01" defaultValue={editingStaff.hourly_rate ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Monthly salary (ETB)
+                      <input name="salary" type="number" min="0" step="0.01" defaultValue={editingStaff.salary ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Commission (%)
+                      <input name="commission_rate" type="number" min="0" max="99.99" step="0.01" defaultValue={editingStaff.commission_rate ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660] sm:col-span-2">
+                      Notes
+                      <input name="notes" defaultValue={editingStaff.notes ?? ''} maxLength={1000} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                  </div>
+                  <button type="submit" className="rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] hover:bg-[#135440]">Save staff changes</button>
+                </form>
+              )}
             </section>
           )}
 
@@ -781,12 +1198,148 @@ export default function GymOwnerDashboard() {
                   {classes.length} {classes.length === 1 ? 'class' : 'classes'}
                 </span>
               </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingClass(null);
+                    setShowClassForm((current) => !current);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] hover:bg-[#135440]"
+                >
+                  <Plus className="h-4 w-4" /> Add class
+                </button>
+              </div>
+              {showClassForm && (
+                <form
+                  key={editingClass?.id ?? 'new-class'}
+                  onSubmit={saveClass}
+                  className="space-y-4 rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-[#14201A]">{editingClass ? `Edit ${editingClass.name}` : 'Create a class'}</h3>
+                    <button type="button" onClick={() => { setShowClassForm(false); setEditingClass(null); }} className="text-sm font-semibold text-[#5A6660]">Cancel</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Class name
+                      <input name="name" required maxLength={120} defaultValue={editingClass?.name ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Class type
+                      <select name="class_type" required defaultValue={editingClass?.class_type ?? 'strength'} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm">
+                        {['yoga', 'pilates', 'spin', 'hiit', 'crossfit', 'boxing', 'zumba', 'strength', 'cardio', 'flexibility', 'functional', 'other'].map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Trainer
+                      <select name="trainer_id" defaultValue={editingClass?.trainer_id ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm">
+                        <option value="">Unassigned</option>
+                        {staff.filter((member) => member.status === 'active' && ['trainer', 'head_trainer'].includes(member.position)).map((member) => <option key={member.user_id} value={member.user_id}>{member.user?.full_name}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Day
+                      <select name="day_of_week" defaultValue={editingClass?.day_of_week ?? 1} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm">
+                        {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => <option key={day} value={index}>{day}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Start time
+                      <input name="start_time" type="time" required defaultValue={editingClass?.start_time.slice(0, 5) ?? '09:00'} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Duration (minutes)
+                      <input name="duration_minutes" type="number" min="1" max="480" required defaultValue={editingClass?.duration_minutes ?? 60} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Capacity
+                      <input name="capacity" type="number" min="1" max="500" required defaultValue={editingClass?.capacity ?? 20} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Price (ETB; 0 = included)
+                      <input name="price" type="number" min="0" max="9999.99" step="0.01" required defaultValue={editingClass?.price ?? 0} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660]">
+                      Difficulty
+                      <select name="difficulty_level" defaultValue={editingClass?.difficulty_level ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm">
+                        <option value="">Not specified</option><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option><option value="all_levels">All levels</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-[#5A6660] sm:col-span-2 lg:col-span-3">
+                      Description
+                      <textarea name="description" rows={2} maxLength={2000} defaultValue={editingClass?.description ?? ''} className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2 text-sm" />
+                    </label>
+                  </div>
+                  <button type="submit" className="rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] hover:bg-[#135440]">
+                    {editingClass ? 'Save class changes' : 'Create class'}
+                  </button>
+                </form>
+              )}
               <DataTable
                 columns={classColumns}
                 data={classes}
                 keyExtractor={(item) => item.id}
                 emptyMessage="No classes are scheduled for this gym yet."
               />
+            </section>
+          )}
+
+          {activeTab === 'attendance' && (
+            <section className="space-y-4">
+              <div>
+                <h2 className="font-serif text-2xl text-[#14201A]">Member attendance</h2>
+                <p className="mt-1 text-sm text-[#5A6660]">Record open-gym visits and review today&apos;s check-ins.</p>
+              </div>
+              <form onSubmit={takeAttendance} className="flex flex-wrap items-end gap-3 rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5">
+                <label className="min-w-60 flex-1 text-xs font-semibold text-[#5A6660]">
+                  Active member
+                  <select
+                    value={attendanceMemberId}
+                    onChange={(event) => setAttendanceMemberId(event.target.value)}
+                    required
+                    className="mt-1 w-full rounded-lg border border-[#14201A]/15 bg-white px-3 py-2.5 text-sm text-[#14201A]"
+                  >
+                    <option value="">Select a member</option>
+                    {members.filter((membership) => membership.status === 'active' && membership.member).map((membership) => (
+                      <option key={membership.id} value={membership.member_id}>
+                        {membership.member?.full_name} · {membership.member?.phone || membership.member?.email || 'No contact'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  disabled={!attendanceMemberId}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] hover:bg-[#135440] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <UserCheck className="h-4 w-4" />
+                  {attendance.some((record) => record.member_id === attendanceMemberId && !record.check_out_at) ? 'Check out' : 'Check in'}
+                </button>
+              </form>
+              <section className="overflow-hidden rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6]">
+                <div className="border-b border-[#14201A]/10 px-5 py-4">
+                  <h3 className="font-semibold text-[#14201A]">Today&apos;s visits</h3>
+                </div>
+                {attendance.length === 0 ? (
+                  <p className="p-5 text-sm text-[#5A6660]">No check-ins have been recorded today.</p>
+                ) : (
+                  <ul className="divide-y divide-[#14201A]/10">
+                    {attendance.slice(0, 30).map((record) => (
+                      <li key={record.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[#14201A]">{record.member?.full_name || members.find((membership) => membership.member_id === record.member_id)?.member?.full_name || 'Member'}</p>
+                          <p className="text-xs capitalize text-[#5A6660]">{record.attendance_type.replaceAll('_', ' ')}</p>
+                        </div>
+                        <p className="text-xs text-[#5A6660]">
+                          In {new Date(record.check_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {record.check_out_at ? ` · Out ${new Date(record.check_out_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' · Checked in'}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             </section>
           )}
 
@@ -833,6 +1386,12 @@ export default function GymOwnerDashboard() {
                   );
                 })}
               </div>
+              <Link
+                href="/gym-owner/reports"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#0B3D2E] px-4 py-3 text-sm font-semibold text-[#F2F7D9] transition-colors hover:bg-[#135440]"
+              >
+                Open detailed reports, exports & commissions
+              </Link>
             </section>
           )}
         </div>

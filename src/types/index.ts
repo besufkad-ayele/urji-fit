@@ -183,6 +183,12 @@ export interface Gym {
   description: string | null;
   operating_hours: Record<string, string> | null;
   amenities: string[] | null;
+  bank_name?: string | null;
+  bank_account_name?: string | null;
+  bank_account_number?: string | null;
+  mobile_money_provider?: string | null;
+  mobile_money_account?: string | null;
+  payment_instructions?: string | null;
   capacity: number;
   monthly_revenue: number;
   status: 'active' | 'inactive' | 'suspended';
@@ -212,13 +218,27 @@ export interface GymMembership {
   id: string;
   gym_id: string;
   member_id: string;
-  membership_type: 'monthly' | 'quarterly' | 'annual' | 'day_pass' | 'class_pack';
+  membership_type:
+    | 'monthly'
+    | 'quarterly'
+    | 'annual'
+    | 'day_pass'
+    | 'family'
+    | 'corporate'
+    | 'student'
+    | 'couple'
+    | 'pay_per_visit'
+    | 'class_pack';
   price: number;
   start_date: string;
   end_date: string | null;
   status: 'active' | 'expired' | 'suspended' | 'canceled';
   auto_renew: boolean;
   sessions_remaining: number | null;
+  plan_id?: string | null;
+  frozen_at?: string | null;
+  pending_plan_id?: string | null;
+  household_id?: string | null;
   created_at: string;
   updated_at: string;
   member?: User;
@@ -270,7 +290,7 @@ export interface ClassBooking {
   class_id: string;
   member_id: string;
   booking_date: string;
-  status: 'booked' | 'attended' | 'no_show' | 'canceled';
+  status: 'booked' | 'waitlisted' | 'attended' | 'no_show' | 'canceled';
   checked_in_at: string | null;
   notes: string | null;
   created_at: string;
@@ -303,6 +323,12 @@ export interface PaymentTransaction {
   status: 'pending' | 'completed' | 'failed' | 'refunded';
   payment_date: string;
   notes: string | null;
+  currency: 'ETB';
+  reference_number: string | null;
+  receipt_path: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
   created_at: string;
   member?: User;
   gym?: Gym;
