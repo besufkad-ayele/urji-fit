@@ -65,6 +65,13 @@ export default function AdminDashboardPage() {
   const [newRole, setNewRole] = useState('member');
   const [newTier, setNewTier] = useState('free');
   const [newStatus, setNewStatus] = useState('active');
+  const [newGymName, setNewGymName] = useState('');
+  const [newGymOwnerId, setNewGymOwnerId] = useState('');
+  const [newGymCity, setNewGymCity] = useState('');
+  const [assignmentGymId, setAssignmentGymId] = useState('');
+  const [assignmentOwnerId, setAssignmentOwnerId] = useState('');
+  const [gymError, setGymError] = useState('');
+  const [creatingGym, setCreatingGym] = useState(false);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
   const [reissuedOtpInfo, setReissuedOtpInfo] = useState<{ userName: string; code: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -153,6 +160,75 @@ export default function AdminDashboardPage() {
       }
     } catch {
       alert('Network error creating user');
+    }
+  };
+
+  const handleCreateGym = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingGym(true);
+    setGymError('');
+
+    try {
+      const res = await fetch('/api/gyms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newGymName.trim(),
+          owner_id: newGymOwnerId,
+          city: newGymCity.trim() || null,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setGymError(data.error || 'Failed to create gym.');
+        return;
+      }
+
+      setNewGymName('');
+      setNewGymOwnerId('');
+      setNewGymCity('');
+      await fetchGyms();
+    } catch {
+      setGymError('Network error creating gym.');
+    } finally {
+      setCreatingGym(false);
+    }
+  };
+
+  const handleAssignGymOwner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const gym = gyms.find((item) => item.id === assignmentGymId);
+    const owner = users.find((item) => item.id === assignmentOwnerId);
+    if (!gym || !owner) {
+      setGymError('Select an existing gym and a gym-owner account.');
+      return;
+    }
+    if (
+      gym.owner_id !== assignmentOwnerId &&
+      !window.confirm(`Assign ${gym.name} to ${owner.full_name}? The current owner will lose access to this gym.`)
+    ) {
+      return;
+    }
+
+    setCreatingGym(true);
+    setGymError('');
+    try {
+      const res = await fetch('/api/gyms', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gymId: assignmentGymId, owner_id: assignmentOwnerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGymError(data.error || 'Failed to assign gym owner.');
+        return;
+      }
+      await fetchGyms();
+    } catch {
+      setGymError('Network error assigning gym owner.');
+    } finally {
+      setCreatingGym(false);
     }
   };
 
@@ -566,6 +642,129 @@ export default function AdminDashboardPage() {
 
           {activeTab === 'gyms' && (
             <div className="space-y-4">
+              {gyms.length > 0 && users.some((item) => item.role === 'gym_owner') && (
+                <section className="rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5 md:p-6">
+                  <h3 className="font-serif text-2xl text-[#14201A]">Assign an existing gym</h3>
+                  <p className="mt-1 text-sm text-[rgb(90,102,96)]">
+                    Use this if the gym is already listed below. Reassignment transfers dashboard access from its current owner.
+                  </p>
+                  <form onSubmit={handleAssignGymOwner} className="mt-5 grid gap-3 md:grid-cols-3">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                      Gym
+                      <select
+                        required
+                        value={assignmentGymId}
+                        onChange={(event) => setAssignmentGymId(event.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                      >
+                        <option value="">Select a gym</option>
+                        {gyms.map((gym) => (
+                          <option key={gym.id} value={gym.id}>
+                            {gym.name} {gym.owner?.full_name ? `— ${gym.owner.full_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                      New owner
+                      <select
+                        required
+                        value={assignmentOwnerId}
+                        onChange={(event) => setAssignmentOwnerId(event.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                      >
+                        <option value="">Select an owner</option>
+                        {users
+                          .filter((item) => item.role === 'gym_owner')
+                          .map((owner) => (
+                            <option key={owner.id} value={owner.id}>
+                              {owner.full_name} ({owner.email || owner.phone})
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <div className="flex items-end">
+                      <button
+                        type="submit"
+                        disabled={creatingGym}
+                        className="w-full rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] transition-colors hover:bg-[#135440] disabled:opacity-50"
+                      >
+                        {creatingGym ? 'Assigning…' : 'Assign owner'}
+                      </button>
+                    </div>
+                    {gymError && (
+                      <p role="alert" className="text-sm text-red-700 md:col-span-3">
+                        {gymError}
+                      </p>
+                    )}
+                  </form>
+                </section>
+              )}
+              <section className="rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5 md:p-6">
+                <h3 className="font-serif text-2xl text-[#14201A]">Create a gym</h3>
+                <p className="mt-1 text-sm text-[rgb(90,102,96)]">
+                  Connect a gym to an existing gym-owner account so the owner can access its dashboard.
+                </p>
+                {users.filter((item) => item.role === 'gym_owner').length > 0 ? (
+                  <form onSubmit={handleCreateGym} className="mt-5 grid gap-3 md:grid-cols-3">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                      Gym name
+                      <input
+                        required
+                        value={newGymName}
+                        onChange={(event) => setNewGymName(event.target.value)}
+                        placeholder="e.g. Bole Urji Gym"
+                        className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                      />
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                      Gym owner
+                      <select
+                        required
+                        value={newGymOwnerId}
+                        onChange={(event) => setNewGymOwnerId(event.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                      >
+                        <option value="">Select an owner</option>
+                        {users
+                          .filter((item) => item.role === 'gym_owner')
+                          .map((owner) => (
+                            <option key={owner.id} value={owner.id}>
+                              {owner.full_name} ({owner.email || owner.phone})
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                      City <span className="font-normal normal-case tracking-normal">(optional)</span>
+                      <input
+                        value={newGymCity}
+                        onChange={(event) => setNewGymCity(event.target.value)}
+                        placeholder="e.g. Addis Ababa"
+                        className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                      />
+                    </label>
+                    {gymError && (
+                      <p role="alert" className="text-sm text-red-700 md:col-span-3">
+                        {gymError}
+                      </p>
+                    )}
+                    <div className="md:col-span-3">
+                      <button
+                        type="submit"
+                        disabled={creatingGym}
+                        className="rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] transition-colors hover:bg-[#135440] disabled:opacity-50"
+                      >
+                        {creatingGym ? 'Creating gym…' : 'Create gym and assign owner'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <p className="mt-4 text-sm text-[rgb(90,102,96)]">
+                    Register a user with the Gym Owner role first, then return here to connect their gym.
+                  </p>
+                )}
+              </section>
               <h3 className="font-serif text-2xl text-[#14201A]">All Gyms</h3>
               <DataTable
                 columns={gymColumns}

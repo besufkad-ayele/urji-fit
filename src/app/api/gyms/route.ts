@@ -71,17 +71,29 @@ export async function POST(req: NextRequest) {
       capacity = 100,
     } = body;
 
-    if (!name || !owner_id) {
+    if (typeof name !== 'string' || !name.trim() || typeof owner_id !== 'string' || !owner_id) {
       return NextResponse.json(
-        { error: 'Gym name and owner ID are required' },
+        { error: 'Gym name and owner ID are required.' },
         { status: 400 }
       );
+    }
+
+    const { data: owner, error: ownerError } = await supabaseAdmin
+      .from('users')
+      .select('id, role')
+      .eq('id', owner_id)
+      .maybeSingle();
+    if (ownerError) {
+      return NextResponse.json({ error: `Could not verify gym owner: ${ownerError.message}` }, { status: 500 });
+    }
+    if (!owner || owner.role !== 'gym_owner') {
+      return NextResponse.json({ error: 'Choose an existing account with the Gym Owner role.' }, { status: 400 });
     }
 
     const { data: gym, error } = await supabaseAdmin
       .from('gyms')
       .insert({
-        name,
+        name: name.trim(),
         owner_id,
         address,
         city,
@@ -127,6 +139,27 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'You are not authorized to update this gym.' }, { status: 403 });
     }
 
+    if ('owner_id' in body && user.role !== 'admin' && user.role !== 'platform_admin') {
+      return NextResponse.json({ error: 'Only an administrator can assign a gym owner.' }, { status: 403 });
+    }
+    if ('owner_id' in body) {
+      if (typeof body.owner_id !== 'string' || !body.owner_id) {
+        return NextResponse.json({ error: 'A valid gym-owner account is required.' }, { status: 400 });
+      }
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: owner, error: ownerError } = await supabaseAdmin
+        .from('users')
+        .select('id, role')
+        .eq('id', body.owner_id)
+        .maybeSingle();
+      if (ownerError) {
+        return NextResponse.json({ error: `Could not verify gym owner: ${ownerError.message}` }, { status: 500 });
+      }
+      if (!owner || owner.role !== 'gym_owner') {
+        return NextResponse.json({ error: 'Choose an existing account with the Gym Owner role.' }, { status: 400 });
+      }
+    }
+
     const editableFields = [
       'name',
       'address',
@@ -147,6 +180,7 @@ export async function PATCH(req: NextRequest) {
     for (const field of editableFields) {
       if (field in body) updates[field] = body[field];
     }
+    if ('owner_id' in body) updates.owner_id = body.owner_id;
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No editable gym fields were provided.' }, { status: 400 });
     }
