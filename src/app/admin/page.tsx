@@ -72,6 +72,14 @@ export default function AdminDashboardPage() {
   const [assignmentOwnerId, setAssignmentOwnerId] = useState('');
   const [gymError, setGymError] = useState('');
   const [creatingGym, setCreatingGym] = useState(false);
+  const [adminPasswordConfigured, setAdminPasswordConfigured] = useState<boolean | null>(null);
+  const [adminPasswordStatusChecked, setAdminPasswordStatusChecked] = useState(false);
+  const [currentAdminPassword, setCurrentAdminPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
   const [reissuedOtpInfo, setReissuedOtpInfo] = useState<{ userName: string; code: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -130,6 +138,18 @@ export default function AdminDashboardPage() {
     if (user) {
       fetchUsers();
       fetchGyms();
+      void fetch('/api/auth/admin-password')
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Could not check password setup.');
+          setAdminPasswordConfigured(Boolean(data.passwordConfigured));
+        })
+        .catch((error: unknown) => {
+          setPasswordError(error instanceof Error ? error.message : 'Could not check password setup.');
+        })
+        .finally(() => {
+          setAdminPasswordStatusChecked(true);
+        });
     }
   }, [user, fetchUsers, fetchGyms]);
 
@@ -229,6 +249,42 @@ export default function AdminDashboardPage() {
       setGymError('Network error assigning gym owner.');
     } finally {
       setCreatingGym(false);
+    }
+  };
+
+  const handleChangeAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage('');
+    setPasswordError('');
+    if (newAdminPassword !== confirmAdminPassword) {
+      setPasswordError('The new passwords do not match.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await fetch('/api/auth/admin-password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: currentAdminPassword,
+          newPassword: newAdminPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPasswordError(data.error || 'Could not change administrator password.');
+        return;
+      }
+      setAdminPasswordConfigured(true);
+      setCurrentAdminPassword('');
+      setNewAdminPassword('');
+      setConfirmAdminPassword('');
+      setPasswordMessage(data.message || 'Administrator password updated.');
+    } catch {
+      setPasswordError('Network error changing administrator password.');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -442,13 +498,14 @@ export default function AdminDashboardPage() {
                     else if (item.label === 'Users') setActiveTab('users');
                     else if (item.label === 'Gyms') setActiveTab('gyms');
                     else if (item.label === 'Analytics') setActiveTab('analytics');
-                    else if (item.label === 'Settings') alert('Settings coming soon');
+                    else if (item.label === 'Settings') setActiveTab('settings');
                   }}
                   className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     (item.label === 'Overview' && activeTab === 'overview') ||
                     (item.label === 'Users' && activeTab === 'users') ||
                     (item.label === 'Gyms' && activeTab === 'gyms') ||
-                    (item.label === 'Analytics' && activeTab === 'analytics')
+                    (item.label === 'Analytics' && activeTab === 'analytics') ||
+                    (item.label === 'Settings' && activeTab === 'settings')
                       ? 'bg-[#0B3D2E] text-[#F2F7D9] shadow-sm font-semibold'
                       : 'text-[rgb(90,102,96)] hover:bg-[#F2F7D9]/60 hover:text-[#14201A]'
                   }`}
@@ -795,6 +852,73 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <section className="max-w-2xl rounded-2xl border border-[#14201A]/10 bg-[#FCFAF6] p-5 md:p-6">
+              <h3 className="font-serif text-2xl text-[#14201A]">Administrator security</h3>
+              <p className="mt-1 text-sm text-[rgb(90,102,96)]">
+                {adminPasswordConfigured
+                  ? 'Change the password used for platform-admin sign-in. Use at least 12 characters.'
+                : adminPasswordStatusChecked
+                  ? 'Set a password for future administrator sign-ins. You are currently signed in with your admin account, so you do not need to enter a current password.'
+                  : 'Checking administrator password setup…'}
+              </p>
+              <form onSubmit={handleChangeAdminPassword} className="mt-5 space-y-4">
+                {adminPasswordConfigured && (
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                    Current password
+                    <input
+                      required
+                      type="password"
+                      autoComplete="current-password"
+                      value={currentAdminPassword}
+                      onChange={(event) => setCurrentAdminPassword(event.target.value)}
+                      className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                    />
+                  </label>
+                )}
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                  New password
+                  <input
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    type="password"
+                    autoComplete="new-password"
+                    value={newAdminPassword}
+                    onChange={(event) => setNewAdminPassword(event.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                  />
+                </label>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)]">
+                  Confirm new password
+                  <input
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmAdminPassword}
+                    onChange={(event) => setConfirmAdminPassword(event.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-[#14201A]/15 bg-white px-3.5 py-2.5 text-sm font-normal normal-case tracking-normal text-[#14201A]"
+                  />
+                </label>
+                {passwordError && <p role="alert" className="text-sm text-red-700">{passwordError}</p>}
+                {passwordMessage && <p role="status" className="text-sm text-emerald-800">{passwordMessage}</p>}
+                <button
+                  type="submit"
+                  disabled={changingPassword || !adminPasswordStatusChecked || adminPasswordConfigured === null}
+                  className="rounded-xl bg-[#0B3D2E] px-4 py-2.5 text-sm font-semibold text-[#F2F7D9] transition-colors hover:bg-[#135440] disabled:opacity-50"
+                >
+                  {changingPassword
+                    ? adminPasswordConfigured ? 'Updating password…' : 'Setting password…'
+                    : !adminPasswordStatusChecked || adminPasswordConfigured === null
+                      ? 'Checking password…'
+                      : adminPasswordConfigured ? 'Update password' : 'Set admin password'}
+                </button>
+              </form>
+            </section>
           )}
         </div>
       </main>
