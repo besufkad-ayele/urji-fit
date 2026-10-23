@@ -9,6 +9,7 @@ export interface SessionUser {
   id: string;
   role: 'member' | 'trainer' | 'gym_owner' | 'admin' | 'platform_admin';
   current_device_id: string | null;
+  home_gym_id: string | null;
 }
 
 interface SessionPayload {

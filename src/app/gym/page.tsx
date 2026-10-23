@@ -87,7 +87,10 @@ export default function MemberGymPage() {
       setGyms(result.gyms);
       setBookings(result.bookings);
       setAttendance(result.attendance);
-      const defaultGymId = result.memberships.find((membership: Membership) => membership.is_active_today)?.gym_id ?? result.gyms[0]?.id ?? '';
+      const defaultGymId = result.memberships.find((membership: Membership) => membership.is_active_today)?.gym_id ??
+        result.home_gym_id ??
+        result.gyms[0]?.id ??
+        '';
       setSelectedGymId((current) => current || defaultGymId);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your gym overview.');
@@ -171,8 +174,8 @@ export default function MemberGymPage() {
         {error && <p role="alert" className="rounded-xl border border-[#C1502E]/20 bg-[#FBE9E1] px-4 py-3 text-sm text-[#8E341E]">{error}</p>}
         {notice && <p role="status" className="rounded-xl border border-[#0B3D2E]/15 bg-[#F2F7D9] px-4 py-3 text-sm text-[#0B3D2E]">{notice}</p>}
 
-        {!memberships.length ? (
-          <section className="rounded-3xl border border-[#14201A]/10 bg-[#FCFAF6] p-6 text-sm text-[#5A6660]">No gym membership is connected to this account yet. Contact your gym to enroll or check your account setup.</section>
+        {!gyms.length ? (
+          <section className="rounded-3xl border border-[#14201A]/10 bg-[#FCFAF6] p-6 text-sm text-[#5A6660]">No gym is connected to this account yet. Contact your administrator to update your account.</section>
         ) : (
           <>
             {selectedGym && <section className="rounded-3xl bg-[#0B3D2E] p-6 text-[#F2F7D9] shadow-sm md:p-8">
@@ -196,7 +199,7 @@ export default function MemberGymPage() {
                     <p className="mt-1 text-xs text-[#F2F7D9]/65">Valid {formatDate(membership.start_date)}{membership.end_date ? ` – ${formatDate(membership.end_date)}` : ' onward'}</p>
                   </div>
                 ))}
-                {!selectedMemberships.length && <p className="rounded-2xl bg-white/10 p-4 text-sm">This gym membership is not currently active. Contact the gym for help restoring access.</p>}
+                {!selectedMemberships.length && <p className="rounded-2xl bg-white/10 p-4 text-sm">You are connected to this gym, but do not have an active membership yet. Contact the gym to enroll or restore access.</p>}
               </div>
             </section>}
 

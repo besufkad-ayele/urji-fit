@@ -265,6 +265,12 @@ CREATE TABLE IF NOT EXISTS public.gyms (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS home_gym_id UUID REFERENCES public.gyms(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_users_home_gym
+  ON public.users(home_gym_id);
+
 ALTER TABLE public.gyms
   ADD COLUMN IF NOT EXISTS slug TEXT,
   ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,

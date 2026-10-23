@@ -7,6 +7,7 @@ export interface User {
   tier: 'free' | 'premium';
   subscription_status: 'active' | 'expired' | 'canceled' | 'trial';
   subscription_expires_at: string | null;
+  home_gym_id: string | null;
   current_device_id: string | null;
   device_name: string | null;
   last_active_at: string;

@@ -48,7 +48,15 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
     const body = await req.json();
-    const { phone, email, full_name, role = 'member', tier = 'free', subscription_status = 'active' } = body;
+    const {
+      phone,
+      email,
+      full_name,
+      role = 'member',
+      home_gym_id = null,
+      tier = 'free',
+      subscription_status = 'active',
+    } = body;
 
     const allowedRoles = ['member', 'trainer', 'gym_owner', 'admin', 'platform_admin'];
     if (!allowedRoles.includes(role)) {
@@ -59,6 +67,30 @@ export async function POST(req: NextRequest) {
     }
     if (!['free', 'premium'].includes(tier) || !['active', 'expired', 'canceled', 'trial'].includes(subscription_status)) {
       return NextResponse.json({ error: 'Tier or subscription status is invalid.' }, { status: 400 });
+    }
+    let homeGymId: string | null = null;
+    if (role === 'member') {
+      if (typeof home_gym_id !== 'string' || !home_gym_id.trim() || home_gym_id.length > 64) {
+        return NextResponse.json({ error: 'Choose a valid gym for this member account.' }, { status: 400 });
+      }
+      homeGymId = home_gym_id.trim();
+      const { data: gym, error: gymError } = await supabaseAdmin
+        .from('gyms')
+        .select('id')
+        .eq('id', homeGymId)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (gymError) {
+        if (gymError.code === '22P02') {
+          return NextResponse.json({ error: 'The selected gym ID is invalid. Refresh the gym list and choose a gym again.' }, { status: 400 });
+        }
+        return NextResponse.json({ error: `Could not verify the selected gym: ${gymError.message}` }, { status: 500 });
+      }
+      if (!gym) {
+        return NextResponse.json({ error: 'Choose an active gym for this member account.' }, { status: 400 });
+      }
+    } else if (home_gym_id !== null) {
+      return NextResponse.json({ error: 'Only member accounts can be assigned to a home gym.' }, { status: 400 });
     }
 
     if (!full_name || (!phone && !email)) {
@@ -76,6 +108,7 @@ export async function POST(req: NextRequest) {
         email: email?.trim() || null,
         full_name: full_name.trim(),
         role,
+        home_gym_id: homeGymId,
         tier,
         subscription_status,
       })

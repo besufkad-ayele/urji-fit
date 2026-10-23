@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Users,
   ShieldCheck,
+  AlertCircle,
   UserPlus,
   RefreshCw,
   Key,
@@ -56,6 +57,8 @@ export default function AdminDashboardPage() {
   const [user, setUser] = useState<any>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [gyms, setGyms] = useState<Gym[]>([]);
+  const [gymsLoading, setGymsLoading] = useState(true);
+  const [gymLoadError, setGymLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [showModal, setShowModal] = useState(false);
@@ -63,6 +66,7 @@ export default function AdminDashboardPage() {
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('member');
+  const [newHomeGymId, setNewHomeGymId] = useState('');
   const [newTier, setNewTier] = useState('free');
   const [newStatus, setNewStatus] = useState('active');
   const [newGymName, setNewGymName] = useState('');
@@ -81,6 +85,8 @@ export default function AdminDashboardPage() {
   const [passwordError, setPasswordError] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
+  const [userCreateError, setUserCreateError] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
   const [reissuedOtpInfo, setReissuedOtpInfo] = useState<{ userName: string; code: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -100,18 +106,22 @@ export default function AdminDashboardPage() {
   }, []);
 
   const fetchGyms = useCallback(async () => {
+    setGymsLoading(true);
+    setGymLoadError('');
     try {
       const raw = localStorage.getItem('urji_user');
-      if (!raw) return;
+      if (!raw) throw new Error('Your admin session is unavailable. Sign in again to load gyms.');
       const currentUser = JSON.parse(raw);
       
       const res = await fetch(`/api/gyms?userId=${currentUser.id}&role=${currentUser.role}`);
       const data = await res.json();
-      if (res.ok && data.gyms) {
-        setGyms(data.gyms);
-      }
-    } catch {
-      console.error('Failed to fetch gyms');
+      if (!res.ok) throw new Error(data.error || 'Could not load gyms.');
+      if (!Array.isArray(data.gyms)) throw new Error('The gym list could not be loaded.');
+      setGyms(data.gyms);
+    } catch (error) {
+      setGymLoadError(error instanceof Error ? error.message : 'Could not load gyms.');
+    } finally {
+      setGymsLoading(false);
     }
   }, []);
 
@@ -155,6 +165,8 @@ export default function AdminDashboardPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCreatingUser(true);
+    setUserCreateError('');
     try {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
@@ -164,22 +176,33 @@ export default function AdminDashboardPage() {
           phone: newPhone || null,
           email: newEmail || null,
           role: newRole,
+          home_gym_id: newRole === 'member' ? newHomeGymId : null,
           tier: newTier,
           subscription_status: newStatus,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        setModalSuccess(`User created! Generated 6-digit OTP: ${data.otp.code}`);
+        const gymName = gyms.find((gym) => gym.id === newHomeGymId)?.name;
+        setModalSuccess(
+          `User created${newRole === 'member' && gymName ? ` and assigned to ${gymName}` : ''}! Generated 6-digit OTP: ${data.otp.code}`
+        );
         fetchUsers();
         setNewName('');
         setNewPhone('');
         setNewEmail('');
+        setNewHomeGymId('');
       } else {
-        alert(data.error || 'Failed to create user');
+        setUserCreateError(data.error || 'We couldn’t create the user. Please review the details and try again.');
       }
-    } catch {
-      alert('Network error creating user');
+    } catch (error) {
+      setUserCreateError(
+        error instanceof Error
+          ? `We couldn’t reach the server: ${error.message}`
+          : 'We couldn’t reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -556,6 +579,7 @@ export default function AdminDashboardPage() {
                   onClick={() => {
                     setShowModal(true);
                     setModalSuccess(null);
+                    setUserCreateError('');
                   }}
                   variant="primary"
                 />
@@ -657,7 +681,11 @@ export default function AdminDashboardPage() {
                   <QuickActionButton
                     label="Register New User"
                     icon={UserPlus}
-                    onClick={() => setShowModal(true)}
+                    onClick={() => {
+                      setShowModal(true);
+                      setModalSuccess(null);
+                      setUserCreateError('');
+                    }}
                     variant="primary"
                   />
                   <QuickActionButton
@@ -951,6 +979,18 @@ export default function AdminDashboardPage() {
               </div>
             ) : (
               <form onSubmit={handleCreateUser} className="space-y-4">
+                {userCreateError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-3 rounded-2xl border border-[#C1502E]/20 bg-[#FBE9E1] p-4 text-sm text-[#8E341E]"
+                  >
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="font-semibold">We couldn’t create this account</p>
+                      <p className="mt-1 leading-relaxed">{userCreateError}</p>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)] mb-1">
                     Full Name
@@ -998,7 +1038,10 @@ export default function AdminDashboardPage() {
                     </label>
                     <select
                       value={newRole}
-                      onChange={(e) => setNewRole(e.target.value)}
+                      onChange={(e) => {
+                        setNewRole(e.target.value);
+                        if (e.target.value !== 'member') setNewHomeGymId('');
+                      }}
                       className="w-full px-3.5 py-2.5 bg-white border border-[#14201A]/15 rounded-xl text-sm"
                     >
                       <option value="member">Member</option>
@@ -1021,6 +1064,40 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
+                {newRole === 'member' && (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-[rgb(90,102,96)] mb-1">
+                      Gym
+                    </label>
+                    <select
+                      required
+                      value={newHomeGymId}
+                      disabled={gymsLoading || Boolean(gymLoadError)}
+                      onChange={(e) => {
+                        setNewHomeGymId(e.target.value);
+                        setUserCreateError('');
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-white border border-[#14201A]/15 rounded-xl text-sm"
+                    >
+                      <option value="">{gymsLoading ? 'Loading gyms…' : 'Select a gym'}</option>
+                      {gyms
+                        .filter((gym) => gym.status === 'active')
+                        .map((gym) => (
+                          <option key={gym.id} value={gym.id}>
+                            {gym.name}{gym.city ? ` — ${gym.city}` : ''}
+                          </option>
+                        ))}
+                    </select>
+                    {gymLoadError ? (
+                      <p role="alert" className="mt-1 text-xs text-[#C1502E]">{gymLoadError}</p>
+                    ) : !gymsLoading && gyms.every((gym) => gym.status !== 'active') ? (
+                      <p className="mt-1 text-xs text-[#C1502E]">
+                        Create or activate a gym before registering a member.
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-4 border-t border-[#14201A]/10">
                   <button
                     type="button"
@@ -1031,9 +1108,15 @@ export default function AdminDashboardPage() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-2.5 bg-[#0B3D2E] hover:bg-[#135440] text-[#F2F7D9] rounded-xl text-xs font-semibold shadow-sm"
+                    disabled={creatingUser || (newRole === 'member' && (
+                      gymsLoading ||
+                      Boolean(gymLoadError) ||
+                      !newHomeGymId ||
+                      gyms.every((gym) => gym.status !== 'active')
+                    ))}
+                    className="flex-1 py-2.5 bg-[#0B3D2E] hover:bg-[#135440] text-[#F2F7D9] rounded-xl text-xs font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Create User
+                    {creatingUser ? 'Creating account…' : 'Create User'}
                   </button>
                 </div>
               </form>

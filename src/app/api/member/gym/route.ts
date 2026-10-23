@@ -28,14 +28,15 @@ export async function GET(request: NextRequest) {
     if (membershipError) throw new Error(`Failed to load memberships: ${membershipError.message}`);
     if (bookingsError) throw new Error(`Failed to load upcoming bookings: ${bookingsError.message}`);
 
-    const gymIds = [...new Set((memberships ?? []).map((membership) => membership.gym_id))];
+    const gymIds = new Set((memberships ?? []).map((membership) => membership.gym_id));
+    if (user.home_gym_id) gymIds.add(user.home_gym_id);
     const [{ data: gyms, error: gymError }, { data: attendance, error: attendanceError }] = await Promise.all([
-      gymIds.length
-        ? supabase.from('gyms').select('id, name, address, city').in('id', gymIds)
+      gymIds.size
+        ? supabase.from('gyms').select('id, name, address, city').in('id', [...gymIds])
         : Promise.resolve({ data: [], error: null }),
-      gymIds.length
+      gymIds.size
         ? supabase.from('attendance_logs').select('id, gym_id, check_in_at, check_out_at, attendance_type')
-          .eq('member_id', user.id).in('gym_id', gymIds)
+          .eq('member_id', user.id).in('gym_id', [...gymIds])
           .order('check_in_at', { ascending: false }).limit(100)
         : Promise.resolve({ data: [], error: null }),
     ]);
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       memberships: membershipsWithAccess,
       gyms: gyms ?? [],
+      home_gym_id: user.home_gym_id ?? null,
       bookings: (bookings ?? []).map((booking) => {
         const classInfo = Array.isArray(booking.class) ? booking.class[0] : booking.class;
         return {
